@@ -555,7 +555,9 @@ async def start_private(update, context):
 
 # ========== ЗАПУСК ==========
 if __name__ == "__main__":
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    builder = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN)
+    builder.job_queue(True)
+    app = builder.build()
 
     # Ежечасное напоминание (каждые 3600 секунд, но реальная отправка не чаще 1 раза в час)
     app.job_queue.run_repeating(hourly_reminder, interval=3600, first=3600)
