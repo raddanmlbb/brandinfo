@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import asyncio
+from datetime import datetime
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler, ContextTypes
 from telegram.constants import ChatType
@@ -41,6 +42,15 @@ class Database:
             )
         """)
         self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vpn (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE,
+                username TEXT,
+                description TEXT,
+                photo_file_id TEXT
+            )
+        """)
+        self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS info_content (
                 key TEXT PRIMARY KEY,
                 text TEXT,
@@ -55,29 +65,11 @@ class Database:
                 photo_file_id TEXT
             )
         """)
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS bot_settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            )
-        """)
         self.conn.commit()
 
     def _init_default_data(self):
-        # Инфо контент
         for key, default_text in [('rules', '📜 Правила чата не заданы.'), ('links', '🔗 Полезные ссылки не заданы.')]:
             self.cursor.execute("INSERT OR IGNORE INTO info_content (key, text) VALUES (?, ?)", (key, default_text))
-        # Настройки бота (сохраняем последний час напоминания)
-        self.cursor.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES (?, ?)", ("last_reminder_hour", "0"))
-        self.conn.commit()
-
-    def get_last_reminder_hour(self):
-        self.cursor.execute("SELECT value FROM bot_settings WHERE key = 'last_reminder_hour'")
-        row = self.cursor.fetchone()
-        return int(row[0]) if row else 0
-
-    def set_last_reminder_hour(self, hour):
-        self.cursor.execute("UPDATE bot_settings SET value = ? WHERE key = 'last_reminder_hour'", (str(hour),))
         self.conn.commit()
 
     # ---- Магазины ----
@@ -117,6 +109,26 @@ class Database:
             return False
     def delete_exchanger(self, name):
         self.cursor.execute("DELETE FROM exchangers WHERE name = ?", (name,))
+        self.conn.commit()
+        return self.cursor.rowcount > 0
+
+    # ---- VPN ----
+    def get_vpn_list(self):
+        self.cursor.execute("SELECT name, username, description, photo_file_id FROM vpn")
+        return self.cursor.fetchall()
+    def get_vpn_by_username(self, username):
+        self.cursor.execute("SELECT name, username, description, photo_file_id FROM vpn WHERE username = ?", (username,))
+        return self.cursor.fetchone()
+    def add_vpn(self, name, username, description, photo_id):
+        try:
+            self.cursor.execute("INSERT INTO vpn (name, username, description, photo_file_id) VALUES (?, ?, ?, ?)",
+                                (name, username, description, photo_id))
+            self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+    def delete_vpn(self, name):
+        self.cursor.execute("DELETE FROM vpn WHERE name = ?", (name,))
         self.conn.commit()
         return self.cursor.rowcount > 0
 
@@ -166,37 +178,6 @@ async def safe_delete(message):
     except:
         pass
 
-# ========== ФУНКЦИЯ ЕЖЕЧАСНОГО НАПОМИНАНИЯ ==========
-async def hourly_reminder(context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет напоминание в группы, где есть бот, не чаще раза в час"""
-    current_hour = asyncio.get_event_loop().time() // 3600  # часы с момента запуска
-    last_hour = db.get_last_reminder_hour()
-    
-    if current_hour == last_hour:
-        return  # уже отправляли в этот час
-    
-    db.set_last_reminder_hour(current_hour)
-    
-    # Получаем все группы, где есть бот (из context.bot_data)
-    group_chats = context.bot_data.get("group_chats", set())
-    
-    for chat_id in group_chats:
-        try:
-            await context.bot.send_message(
-                chat_id,
-                "👋 Привет! Не забывай обо мне 😊\nЖду команду /brand"
-            )
-        except Exception as e:
-            print(f"Не удалось отправить напоминание в чат {chat_id}: {e}")
-
-async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отслеживаем группы, где есть бот"""
-    if update.effective_chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-        chat_id = update.effective_chat.id
-        if "group_chats" not in context.bot_data:
-            context.bot_data["group_chats"] = set()
-        context.bot_data["group_chats"].add(chat_id)
-
 # ========== ОСНОВНЫЕ ОБРАБОТЧИКИ ==========
 async def inline_callback(update, context):
     query = update.callback_query
@@ -204,24 +185,24 @@ async def inline_callback(update, context):
     data = query.data
 
     if data == "show_shops":
-        shops = db.get_shops()
-        if not shops:
+        items = db.get_shops()
+        if not items:
             await query.message.reply_text("Список магазинов пуст.")
             await safe_delete(query.message)
             return
-        kb = [[InlineKeyboardButton(s[0], callback_data=f"shop_{s[1]}")] for s in shops]
+        kb = [[InlineKeyboardButton(i[0], callback_data=f"shop_{i[1]}")] for i in items]
         kb.append([InlineKeyboardButton("◀️ Назад", callback_data="main_menu")])
         await query.message.reply_text("Выберите магазин:", reply_markup=InlineKeyboardMarkup(kb))
         await safe_delete(query.message)
         return
 
     if data == "show_exch":
-        exch = db.get_exchangers()
-        if not exch:
+        items = db.get_exchangers()
+        if not items:
             await query.message.reply_text("Список обменников пуст.")
             await safe_delete(query.message)
             return
-        kb = [[InlineKeyboardButton(e[0], callback_data=f"exch_{e[1]}")] for e in exch]
+        kb = [[InlineKeyboardButton(i[0], callback_data=f"exch_{i[1]}")] for i in items]
         kb.append([InlineKeyboardButton("◀️ Назад", callback_data="main_menu")])
         await query.message.reply_text("Выберите обменник:", reply_markup=InlineKeyboardMarkup(kb))
         await safe_delete(query.message)
@@ -231,19 +212,32 @@ async def inline_callback(update, context):
         kb = [
             [InlineKeyboardButton("📜 Правила чата", callback_data="info_rules")],
             [InlineKeyboardButton("🔗 Полезные ссылки", callback_data="info_links")],
+            [InlineKeyboardButton("🛡️ Надежный VPN", callback_data="show_vpn")],
             [InlineKeyboardButton("◀️ Назад", callback_data="main_menu")]
         ]
         await query.message.reply_text("Информация:", reply_markup=InlineKeyboardMarkup(kb))
         await safe_delete(query.message)
         return
 
+    if data == "show_vpn":
+        items = db.get_vpn_list()
+        if not items:
+            await query.message.reply_text("Список VPN пуст.")
+            await safe_delete(query.message)
+            return
+        kb = [[InlineKeyboardButton(i[0], callback_data=f"vpn_{i[1]}")] for i in items]
+        kb.append([InlineKeyboardButton("◀️ Назад", callback_data="show_info")])
+        await query.message.reply_text("Выберите VPN:", reply_markup=InlineKeyboardMarkup(kb))
+        await safe_delete(query.message)
+        return
+
     if data == "show_jobs":
-        jobs = db.get_jobs()
-        if not jobs:
+        items = db.get_jobs()
+        if not items:
             await query.message.reply_text("Список вакансий пуст.")
             await safe_delete(query.message)
             return
-        kb = [[InlineKeyboardButton(j[0], callback_data=f"job_{j[0]}")] for j in jobs]
+        kb = [[InlineKeyboardButton(i[0], callback_data=f"job_{i[0]}")] for i in items]
         kb.append([InlineKeyboardButton("◀️ Назад", callback_data="main_menu")])
         await query.message.reply_text("Выберите вакансию:", reply_markup=InlineKeyboardMarkup(kb))
         await safe_delete(query.message)
@@ -256,25 +250,37 @@ async def inline_callback(update, context):
 
     if data.startswith("shop_"):
         username = data[5:]
-        shop = db.get_shop_by_username(username)
-        if shop and shop[3] and shop[2]:
-            await query.message.reply_photo(shop[3], caption=shop[2], parse_mode="Markdown")
-        elif shop and shop[2]:
-            await query.message.reply_text(shop[2], parse_mode="Markdown")
+        item = db.get_shop_by_username(username)
+        if item and item[3] and item[2]:
+            await query.message.reply_photo(item[3], caption=item[2], parse_mode="Markdown")
+        elif item and item[2]:
+            await query.message.reply_text(item[2], parse_mode="Markdown")
         else:
-            await query.message.reply_text(f"📦 Свяжитесь с продавцом: @{shop[1]}" if shop else "Магазин не найден")
+            await query.message.reply_text(f"📦 Свяжитесь с продавцом: @{item[1]}" if item else "Магазин не найден")
         await safe_delete(query.message)
         return
 
     if data.startswith("exch_"):
         username = data[5:]
-        exch = db.get_exchanger_by_username(username)
-        if exch and exch[3] and exch[2]:
-            await query.message.reply_photo(exch[3], caption=exch[2], parse_mode="Markdown")
-        elif exch and exch[2]:
-            await query.message.reply_text(exch[2], parse_mode="Markdown")
+        item = db.get_exchanger_by_username(username)
+        if item and item[3] and item[2]:
+            await query.message.reply_photo(item[3], caption=item[2], parse_mode="Markdown")
+        elif item and item[2]:
+            await query.message.reply_text(item[2], parse_mode="Markdown")
         else:
-            await query.message.reply_text(f"💱 Свяжитесь с обменником: @{exch[1]}" if exch else "Обменник не найден")
+            await query.message.reply_text(f"💱 Свяжитесь с обменником: @{item[1]}" if item else "Обменник не найден")
+        await safe_delete(query.message)
+        return
+
+    if data.startswith("vpn_"):
+        username = data[4:]
+        item = db.get_vpn_by_username(username)
+        if item and item[3] and item[2]:
+            await query.message.reply_photo(item[3], caption=item[2], parse_mode="Markdown")
+        elif item and item[2]:
+            await query.message.reply_text(item[2], parse_mode="Markdown")
+        else:
+            await query.message.reply_text(f"🛡️ Свяжитесь с провайдером VPN: @{item[1]}" if item else "VPN не найден")
         await safe_delete(query.message)
         return
 
@@ -298,13 +304,13 @@ async def inline_callback(update, context):
 
     if data.startswith("job_"):
         name = data[4:]
-        job = db.get_job_by_name(name)
-        if job and job[2] and job[1]:
-            await query.message.reply_photo(job[2], caption=job[1], parse_mode="Markdown")
-        elif job and job[1]:
-            await query.message.reply_text(job[1], parse_mode="Markdown")
+        item = db.get_job_by_name(name)
+        if item and item[2] and item[1]:
+            await query.message.reply_photo(item[2], caption=item[1], parse_mode="Markdown")
+        elif item and item[1]:
+            await query.message.reply_text(item[1], parse_mode="Markdown")
         else:
-            await query.message.reply_text(f"Вакансия: {name}")
+            await query.message.reply_text(f"💼 Вакансия: {name}")
         await safe_delete(query.message)
         return
 
@@ -318,12 +324,15 @@ async def admin_menu(update, context):
         [InlineKeyboardButton("➖ Удалить магазин", callback_data="del_shop")],
         [InlineKeyboardButton("➕ Добавить обменник", callback_data="add_exch")],
         [InlineKeyboardButton("➖ Удалить обменник", callback_data="del_exch")],
+        [InlineKeyboardButton("🛡️ Добавить VPN", callback_data="add_vpn")],
+        [InlineKeyboardButton("🗑️ Удалить VPN", callback_data="del_vpn")],
         [InlineKeyboardButton("✏️ Правила чата", callback_data="edit_rules")],
         [InlineKeyboardButton("✏️ Полезные ссылки", callback_data="edit_links")],
         [InlineKeyboardButton("➕ Добавить вакансию", callback_data="add_job")],
         [InlineKeyboardButton("➖ Удалить вакансию", callback_data="del_job")],
         [InlineKeyboardButton("📋 Список магазинов", callback_data="list_shops")],
         [InlineKeyboardButton("📋 Список обменников", callback_data="list_exch")],
+        [InlineKeyboardButton("🛡️ Список VPN", callback_data="list_vpn")],
         [InlineKeyboardButton("📋 Список вакансий", callback_data="list_jobs")],
     ])
     await update.message.reply_text("Меню управления:", reply_markup=keyboard)
@@ -349,6 +358,14 @@ async def admin_callback(update, context):
         await query.message.reply_text("Введите название обменника для удаления:")
         await safe_delete(query.message)
         return "del_exch_name"
+    if data == "add_vpn":
+        await query.message.reply_text("Введите название VPN сервиса:")
+        await safe_delete(query.message)
+        return "add_vpn_name"
+    if data == "del_vpn":
+        await query.message.reply_text("Введите название VPN сервиса для удаления:")
+        await safe_delete(query.message)
+        return "del_vpn_name"
     if data == "edit_rules":
         await query.message.reply_text("Отправьте новый текст правил (можно с фото):")
         await safe_delete(query.message)
@@ -366,20 +383,26 @@ async def admin_callback(update, context):
         await safe_delete(query.message)
         return "del_job_name"
     if data == "list_shops":
-        shops = db.get_shops()
-        msg = "📋 Список магазинов:\n" + "\n".join([f"• {s[0]} — @{s[1]}" for s in shops]) if shops else "Пусто"
+        items = db.get_shops()
+        msg = "📋 Список магазинов:\n" + "\n".join([f"• {i[0]} — @{i[1]}" for i in items]) if items else "Пусто"
         await query.message.reply_text(msg, parse_mode="Markdown")
         await safe_delete(query.message)
         return ConversationHandler.END
     if data == "list_exch":
-        exch = db.get_exchangers()
-        msg = "📋 Список обменников:\n" + "\n".join([f"• {e[0]} — @{e[1]}" for e in exch]) if exch else "Пусто"
+        items = db.get_exchangers()
+        msg = "📋 Список обменников:\n" + "\n".join([f"• {i[0]} — @{i[1]}" for i in items]) if items else "Пусто"
+        await query.message.reply_text(msg, parse_mode="Markdown")
+        await safe_delete(query.message)
+        return ConversationHandler.END
+    if data == "list_vpn":
+        items = db.get_vpn_list()
+        msg = "🛡️ Список VPN:\n" + "\n".join([f"• {i[0]} — @{i[1]}" for i in items]) if items else "Пусто"
         await query.message.reply_text(msg, parse_mode="Markdown")
         await safe_delete(query.message)
         return ConversationHandler.END
     if data == "list_jobs":
-        jobs = db.get_jobs()
-        msg = "📋 Список вакансий:\n" + "\n".join([f"• {j[0]}" for j in jobs]) if jobs else "Пусто"
+        items = db.get_jobs()
+        msg = "📋 Список вакансий:\n" + "\n".join([f"• {i[0]}" for i in items]) if items else "Пусто"
         await query.message.reply_text(msg, parse_mode="Markdown")
         await safe_delete(query.message)
         return ConversationHandler.END
@@ -458,6 +481,42 @@ async def del_exch_name(update, context):
         await update.message.reply_text("❌ Обменник не найден.")
     return ConversationHandler.END
 
+async def add_vpn_name(update, context):
+    context.user_data['vpn_name'] = update.message.text
+    await update.message.reply_text("Введите username провайдера VPN (без @):")
+    return ASK_USERNAME
+
+async def add_vpn_username(update, context):
+    context.user_data['vpn_username'] = update.message.text.strip('@')
+    await update.message.reply_text("Введите описание VPN сервиса:")
+    return ASK_DESCRIPTION
+
+async def add_vpn_desc(update, context):
+    context.user_data['vpn_desc'] = update.message.text
+    await update.message.reply_text("Отправьте фото для VPN (или /skip):")
+    return ASK_PHOTO
+
+async def add_vpn_photo(update, context):
+    photo_id = None
+    if update.message.photo:
+        photo_id = update.message.photo[-1].file_id
+    if db.add_vpn(context.user_data['vpn_name'], context.user_data['vpn_username'], context.user_data['vpn_desc'], photo_id):
+        await update.message.reply_text("✅ VPN добавлен.")
+    else:
+        await update.message.reply_text("❌ Ошибка: название уже существует.")
+    return ConversationHandler.END
+
+async def add_vpn_skip(update, context):
+    await update.message.reply_text("Фото пропущено.")
+    return await add_vpn_photo(update, context)
+
+async def del_vpn_name(update, context):
+    if db.delete_vpn(update.message.text):
+        await update.message.reply_text("✅ VPN удалён.")
+    else:
+        await update.message.reply_text("❌ VPN не найден.")
+    return ConversationHandler.END
+
 async def edit_info_handler(update, context, key, label):
     text = update.message.text or ""
     photo_id = None
@@ -518,14 +577,10 @@ async def brand_command(update, context):
 async def handle_group_text(update, context):
     if update.effective_chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
         return
-    
-    # Бот не должен реагировать на свои собственные сообщения
     if update.message.from_user.id == context.bot.id:
         return
-    
     text = update.message.text.lower()
     trigger_words = ["магаз", "шоп", "подскажите", "обмен", "обменник", "купить"]
-    
     if any(word in text for word in trigger_words):
         await update.message.reply_text("Вам нужна помощь? Выберите категорию:", reply_markup=MAIN_MENU)
 
@@ -539,10 +594,6 @@ async def bot_added_to_group(update, context):
                     "🤖 Меню магазинов, обменников, информации и работы\n\nНажмите кнопку:",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Открыть меню", callback_data="main_menu")]])
                 )
-                # Добавляем группу в список для напоминаний
-                if "group_chats" not in context.bot_data:
-                    context.bot_data["group_chats"] = set()
-                context.bot_data["group_chats"].add(update.effective_chat.id)
                 return
 
 async def start_private(update, context):
@@ -555,15 +606,7 @@ async def start_private(update, context):
 
 # ========== ЗАПУСК ==========
 if __name__ == "__main__":
-    builder = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN)
-    builder.job_queue(True)
-    app = builder.build()
-
-    # Ежечасное напоминание (каждые 3600 секунд, но реальная отправка не чаще 1 раза в час)
-    app.job_queue.run_repeating(hourly_reminder, interval=3600, first=3600)
-
-    # Отслеживание групп (для напоминаний)
-    app.add_handler(MessageHandler(filters.ALL, track_group), group=0)
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start_private))
     app.add_handler(CommandHandler("admin", admin_menu))
@@ -600,6 +643,21 @@ if __name__ == "__main__":
         fallbacks=[CommandHandler("cancel", cancel)]
     ))
 
+    # VPN
+    app.add_handler(ConversationHandler(
+        entry_points=[CallbackQueryHandler(admin_callback, pattern="^add_vpn$")],
+        states={"add_vpn_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, add_vpn_name)],
+                ASK_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_vpn_username)],
+                ASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_vpn_desc)],
+                ASK_PHOTO: [MessageHandler(filters.PHOTO, add_vpn_photo), MessageHandler(filters.COMMAND & filters.Regex("^/skip$"), add_vpn_skip)]},
+        fallbacks=[CommandHandler("cancel", cancel)]
+    ))
+    app.add_handler(ConversationHandler(
+        entry_points=[CallbackQueryHandler(admin_callback, pattern="^del_vpn$")],
+        states={"del_vpn_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, del_vpn_name)]},
+        fallbacks=[CommandHandler("cancel", cancel)]
+    ))
+
     # Инфо
     app.add_handler(ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_callback, pattern="^edit_rules$")],
@@ -626,10 +684,10 @@ if __name__ == "__main__":
         fallbacks=[CommandHandler("cancel", cancel)]
     ))
 
-    app.add_handler(CallbackQueryHandler(admin_callback, pattern="^(list_shops|list_exch|list_jobs)$"))
-    app.add_handler(CallbackQueryHandler(inline_callback, pattern="^(show_|main_menu|shop_|exch_|info_|job_)"))
+    app.add_handler(CallbackQueryHandler(admin_callback, pattern="^(list_shops|list_exch|list_vpn|list_jobs)$"))
+    app.add_handler(CallbackQueryHandler(inline_callback, pattern="^(show_|main_menu|shop_|exch_|vpn_|info_|job_)"))
 
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot_added_to_group))
 
-    print("Бот запущен. Ежечасные напоминания активны. Триггеры: магаз, шоп, подскажите, обмен, обменник, купить.")
+    print("Бот запущен. Без напоминаний, без job-queue.")
     app.run_polling()
