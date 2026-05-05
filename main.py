@@ -1,118 +1,48 @@
 import sqlite3
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 from telegram.constants import ChatType
 
 TELEGRAM_BOT_TOKEN = "8643635341:AAG-H4T-Fe_LcjD4t9VAhwKLFt3bAG5P1rI"
-ADMIN_ID = 7956317602  # Замените на ваш числовой ID
-
-ASK_NAME = 1
-ASK_USERNAME = 2
-ASK_DESCRIPTION = 3
-ASK_PHOTO = 4
+ADMIN_ID = 7956317602  # Замените на ваш ID
 
 # ========== БАЗА ДАННЫХ ==========
 class Database:
-    def __init__(self, db_file="shop_data.db"):
-        self.conn = sqlite3.connect(db_file, check_same_thread=False)
+    def __init__(self):
+        self.conn = sqlite3.connect("shop_data.db", check_same_thread=False)
         self.cursor = self.conn.cursor()
-        self._create_tables()
-        self._init_default_data()
-
-    def _create_tables(self):
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS shops (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, username TEXT, description TEXT, photo_file_id TEXT)")
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS exchangers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, username TEXT, description TEXT, photo_file_id TEXT)")
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS vpn (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, username TEXT, description TEXT, photo_file_id TEXT)")
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS info_content (key TEXT PRIMARY KEY, text TEXT, photo_file_id TEXT)")
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, description TEXT, photo_file_id TEXT)")
+        self.cursor.execute("CREATE TABLE IF NOT EXISTS shops (id INTEGER PRIMARY KEY, name TEXT, username TEXT, description TEXT, photo TEXT)")
+        self.cursor.execute("CREATE TABLE IF NOT EXISTS exchangers (id INTEGER PRIMARY KEY, name TEXT, username TEXT, description TEXT, photo TEXT)")
+        self.cursor.execute("CREATE TABLE IF NOT EXISTS vpn (id INTEGER PRIMARY KEY, name TEXT, username TEXT, description TEXT, photo TEXT)")
+        self.cursor.execute("CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY, name TEXT, description TEXT, photo TEXT)")
+        self.cursor.execute("CREATE TABLE IF NOT EXISTS info (key TEXT PRIMARY KEY, text TEXT, photo TEXT)")
+        self.conn.commit()
+        self.cursor.execute("INSERT OR IGNORE INTO info (key, text) VALUES ('rules', '📜 Правила не заданы')")
+        self.cursor.execute("INSERT OR IGNORE INTO info (key, text) VALUES ('links', '🔗 Ссылки не заданы')")
         self.conn.commit()
 
-    def _init_default_data(self):
-        for key, default in [('rules', '📜 Правила чата не заданы.'), ('links', '🔗 Полезные ссылки не заданы.')]:
-            self.cursor.execute("INSERT OR IGNORE INTO info_content (key, text) VALUES (?, ?)", (key, default))
-        self.conn.commit()
-
-    def get_shops(self):
-        self.cursor.execute("SELECT name, username, description, photo_file_id FROM shops")
-        return self.cursor.fetchall()
-    def get_shop_by_username(self, username):
-        self.cursor.execute("SELECT name, username, description, photo_file_id FROM shops WHERE username = ?", (username,))
-        return self.cursor.fetchone()
-    def add_shop(self, name, username, description, photo_id):
+    def add_item(self, table, name, username, desc, photo):
         try:
-            self.cursor.execute("INSERT INTO shops (name, username, description, photo_file_id) VALUES (?, ?, ?, ?)", (name, username, description, photo_id))
+            self.cursor.execute(f"INSERT INTO {table} (name, username, description, photo) VALUES (?, ?, ?, ?)", (name, username, desc, photo))
             self.conn.commit()
             return True
-        except:
-            return False
-    def delete_shop(self, name):
-        self.cursor.execute("DELETE FROM shops WHERE name = ?", (name,))
+        except: return False
+    def delete_item(self, table, name):
+        self.cursor.execute(f"DELETE FROM {table} WHERE name = ?", (name,))
         self.conn.commit()
         return self.cursor.rowcount > 0
-
-    def get_exchangers(self):
-        self.cursor.execute("SELECT name, username, description, photo_file_id FROM exchangers")
+    def get_items(self, table):
+        self.cursor.execute(f"SELECT name, username, description, photo FROM {table}")
         return self.cursor.fetchall()
-    def get_exchanger_by_username(self, username):
-        self.cursor.execute("SELECT name, username, description, photo_file_id FROM exchangers WHERE username = ?", (username,))
+    def get_item(self, table, username):
+        self.cursor.execute(f"SELECT name, username, description, photo FROM {table} WHERE username = ?", (username,))
         return self.cursor.fetchone()
-    def add_exchanger(self, name, username, description, photo_id):
-        try:
-            self.cursor.execute("INSERT INTO exchangers (name, username, description, photo_file_id) VALUES (?, ?, ?, ?)", (name, username, description, photo_id))
-            self.conn.commit()
-            return True
-        except:
-            return False
-    def delete_exchanger(self, name):
-        self.cursor.execute("DELETE FROM exchangers WHERE name = ?", (name,))
+    def update_info(self, key, text, photo):
+        self.cursor.execute("UPDATE info SET text = ?, photo = ? WHERE key = ?", (text, photo, key))
         self.conn.commit()
-        return self.cursor.rowcount > 0
-
-    def get_vpn_list(self):
-        self.cursor.execute("SELECT name, username, description, photo_file_id FROM vpn")
-        return self.cursor.fetchall()
-    def get_vpn_by_username(self, username):
-        self.cursor.execute("SELECT name, username, description, photo_file_id FROM vpn WHERE username = ?", (username,))
-        return self.cursor.fetchone()
-    def add_vpn(self, name, username, description, photo_id):
-        try:
-            self.cursor.execute("INSERT INTO vpn (name, username, description, photo_file_id) VALUES (?, ?, ?, ?)", (name, username, description, photo_id))
-            self.conn.commit()
-            return True
-        except:
-            return False
-    def delete_vpn(self, name):
-        self.cursor.execute("DELETE FROM vpn WHERE name = ?", (name,))
-        self.conn.commit()
-        return self.cursor.rowcount > 0
-
     def get_info(self, key):
-        self.cursor.execute("SELECT text, photo_file_id FROM info_content WHERE key = ?", (key,))
+        self.cursor.execute("SELECT text, photo FROM info WHERE key = ?", (key,))
         return self.cursor.fetchone()
-    def update_info(self, key, text, photo_id=None):
-        if photo_id:
-            self.cursor.execute("UPDATE info_content SET text = ?, photo_file_id = ? WHERE key = ?", (text, photo_id, key))
-        else:
-            self.cursor.execute("UPDATE info_content SET text = ?, photo_file_id = NULL WHERE key = ?", (text, key))
-        self.conn.commit()
-
-    def get_jobs(self):
-        self.cursor.execute("SELECT name, description, photo_file_id FROM jobs")
-        return self.cursor.fetchall()
-    def get_job_by_name(self, name):
-        self.cursor.execute("SELECT name, description, photo_file_id FROM jobs WHERE name = ?", (name,))
-        return self.cursor.fetchone()
-    def add_job(self, name, description, photo_id):
-        try:
-            self.cursor.execute("INSERT INTO jobs (name, description, photo_file_id) VALUES (?, ?, ?)", (name, description, photo_id))
-            self.conn.commit()
-            return True
-        except:
-            return False
-    def delete_job(self, name):
-        self.cursor.execute("DELETE FROM jobs WHERE name = ?", (name,))
-        self.conn.commit()
-        return self.cursor.rowcount > 0
 
 db = Database()
 
@@ -123,63 +53,36 @@ MAIN_MENU = InlineKeyboardMarkup([
     [InlineKeyboardButton("💼 Работа", callback_data="show_jobs")]
 ])
 
-async def safe_delete(message):
-    try:
-        await message.delete()
-    except:
-        pass
+async def safe_delete(msg):
+    try: await msg.delete()
+    except: pass
 
-# ========== ОСНОВНЫЕ ОБРАБОТЧИКИ ==========
-async def inline_callback(update, context):
+# ========== ПОКАЗ КАТЕГОРИЙ ==========
+async def show_items(update, context, table, title, back_cb, item_type):
+    items = db.get_items(table)
+    if not items:
+        await update.callback_query.message.reply_text(f"Список {title} пуст.")
+        await safe_delete(update.callback_query.message)
+        return
+    kb = [[InlineKeyboardButton(i[0], callback_data=f"{item_type}_{i[1]}")] for i in items]
+    kb.append([InlineKeyboardButton("◀️ Назад", callback_data=back_cb)])
+    await update.callback_query.message.reply_text(f"Выберите {title}:", reply_markup=InlineKeyboardMarkup(kb))
+    await safe_delete(update.callback_query.message)
+
+# ========== ОСНОВНОЙ КОЛБЭК ==========
+async def main_callback(update, context):
     query = update.callback_query
     await query.answer()
     data = query.data
 
     if data == "show_shops":
-        items = db.get_shops()
-        if not items:
-            await query.message.reply_text("Список магазинов пуст.")
-            await safe_delete(query.message)
-            return
-        kb = [[InlineKeyboardButton(i[0], callback_data=f"shop_{i[1]}")] for i in items]
-        kb.append([InlineKeyboardButton("◀️ Назад", callback_data="main_menu")])
-        await query.message.reply_text("Выберите магазин:", reply_markup=InlineKeyboardMarkup(kb))
-        await safe_delete(query.message)
-        return
-    if data == "show_exch":
-        items = db.get_exchangers()
-        if not items:
-            await query.message.reply_text("Список обменников пуст.")
-            await safe_delete(query.message)
-            return
-        kb = [[InlineKeyboardButton(i[0], callback_data=f"exch_{i[1]}")] for i in items]
-        kb.append([InlineKeyboardButton("◀️ Назад", callback_data="main_menu")])
-        await query.message.reply_text("Выберите обменник:", reply_markup=InlineKeyboardMarkup(kb))
-        await safe_delete(query.message)
-        return
-    if data == "show_info":
-        kb = [
-            [InlineKeyboardButton("📜 Правила чата", callback_data="info_rules")],
-            [InlineKeyboardButton("🔗 Полезные ссылки", callback_data="info_links")],
-            [InlineKeyboardButton("🛡️ Надежный VPN", callback_data="show_vpn")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="main_menu")]
-        ]
-        await query.message.reply_text("Информация:", reply_markup=InlineKeyboardMarkup(kb))
-        await safe_delete(query.message)
-        return
-    if data == "show_vpn":
-        items = db.get_vpn_list()
-        if not items:
-            await query.message.reply_text("Список VPN пуст.")
-            await safe_delete(query.message)
-            return
-        kb = [[InlineKeyboardButton(i[0], callback_data=f"vpn_{i[1]}")] for i in items]
-        kb.append([InlineKeyboardButton("◀️ Назад", callback_data="show_info")])
-        await query.message.reply_text("Выберите VPN:", reply_markup=InlineKeyboardMarkup(kb))
-        await safe_delete(query.message)
-        return
-    if data == "show_jobs":
-        items = db.get_jobs()
+        await show_items(update, context, "shops", "магазин", "main_menu", "shop")
+    elif data == "show_exch":
+        await show_items(update, context, "exchangers", "обменник", "main_menu", "exch")
+    elif data == "show_vpn":
+        await show_items(update, context, "vpn", "VPN", "show_info", "vpn")
+    elif data == "show_jobs":
+        items = db.get_items("jobs")
         if not items:
             await query.message.reply_text("Список вакансий пуст.")
             await safe_delete(query.message)
@@ -188,261 +91,193 @@ async def inline_callback(update, context):
         kb.append([InlineKeyboardButton("◀️ Назад", callback_data="main_menu")])
         await query.message.reply_text("Выберите вакансию:", reply_markup=InlineKeyboardMarkup(kb))
         await safe_delete(query.message)
-        return
-    if data == "main_menu":
+    elif data == "show_info":
+        kb = [
+            [InlineKeyboardButton("📜 Правила чата", callback_data="info_rules")],
+            [InlineKeyboardButton("🔗 Полезные ссылки", callback_data="info_links")],
+            [InlineKeyboardButton("🛡️ Надежный VPN", callback_data="show_vpn")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="main_menu")]
+        ]
+        await query.message.reply_text("Информация:", reply_markup=InlineKeyboardMarkup(kb))
+        await safe_delete(query.message)
+    elif data == "main_menu":
         await query.message.reply_text("Выберите категорию:", reply_markup=MAIN_MENU)
         await safe_delete(query.message)
-        return
-
-    if data.startswith("shop_"):
-        username = data[5:]
-        item = db.get_shop_by_username(username)
-        if item and item[3] and item[2]:
-            await query.message.reply_photo(item[3], caption=item[2], parse_mode="Markdown")
-        elif item and item[2]:
-            await query.message.reply_text(item[2], parse_mode="Markdown")
-        else:
-            await query.message.reply_text(f"📦 Свяжитесь с продавцом: @{item[1]}" if item else "Магазин не найден")
-        await safe_delete(query.message)
-        return
-    if data.startswith("exch_"):
-        username = data[5:]
-        item = db.get_exchanger_by_username(username)
-        if item and item[3] and item[2]:
-            await query.message.reply_photo(item[3], caption=item[2], parse_mode="Markdown")
-        elif item and item[2]:
-            await query.message.reply_text(item[2], parse_mode="Markdown")
-        else:
-            await query.message.reply_text(f"💱 Свяжитесь с обменником: @{item[1]}" if item else "Обменник не найден")
-        await safe_delete(query.message)
-        return
-    if data.startswith("vpn_"):
-        username = data[4:]
-        item = db.get_vpn_by_username(username)
-        if item and item[3] and item[2]:
-            await query.message.reply_photo(item[3], caption=item[2], parse_mode="Markdown")
-        elif item and item[2]:
-            await query.message.reply_text(item[2], parse_mode="Markdown")
-        else:
-            await query.message.reply_text(f"🛡️ Свяжитесь с провайдером VPN: @{item[1]}" if item else "VPN не найден")
-        await safe_delete(query.message)
-        return
-    if data == "info_rules":
+    elif data == "info_rules":
         text, photo = db.get_info('rules')
         if photo:
             await query.message.reply_photo(photo, caption=text, parse_mode="Markdown")
         else:
             await query.message.reply_text(text, parse_mode="Markdown")
         await safe_delete(query.message)
-        return
-    if data == "info_links":
+    elif data == "info_links":
         text, photo = db.get_info('links')
         if photo:
             await query.message.reply_photo(photo, caption=text, parse_mode="Markdown")
         else:
             await query.message.reply_text(text, parse_mode="Markdown")
         await safe_delete(query.message)
-        return
-    if data.startswith("job_"):
-        name = data[4:]
-        item = db.get_job_by_name(name)
-        if item and item[2] and item[1]:
-            await query.message.reply_photo(item[2], caption=item[1], parse_mode="Markdown")
-        elif item and item[1]:
-            await query.message.reply_text(item[1], parse_mode="Markdown")
+    elif data.startswith("shop_"):
+        item = db.get_item("shops", data[5:])
+        if item and item[3]:
+            await query.message.reply_photo(item[3], caption=item[2], parse_mode="Markdown")
+        elif item:
+            await query.message.reply_text(item[2], parse_mode="Markdown")
         else:
-            await query.message.reply_text(f"💼 Вакансия: {name}")
+            await query.message.reply_text(f"📦 @{data[5:]}")
         await safe_delete(query.message)
-        return
+    elif data.startswith("exch_"):
+        item = db.get_item("exchangers", data[5:])
+        if item and item[3]:
+            await query.message.reply_photo(item[3], caption=item[2], parse_mode="Markdown")
+        elif item:
+            await query.message.reply_text(item[2], parse_mode="Markdown")
+        else:
+            await query.message.reply_text(f"💱 @{data[5:]}")
+        await safe_delete(query.message)
+    elif data.startswith("vpn_"):
+        item = db.get_item("vpn", data[4:])
+        if item and item[3]:
+            await query.message.reply_photo(item[3], caption=item[2], parse_mode="Markdown")
+        elif item:
+            await query.message.reply_text(item[2], parse_mode="Markdown")
+        else:
+            await query.message.reply_text(f"🛡️ @{data[4:]}")
+        await safe_delete(query.message)
+    elif data.startswith("job_"):
+        name = data[4:]
+        for item in db.get_items("jobs"):
+            if item[0] == name:
+                if item[3]:
+                    await query.message.reply_photo(item[3], caption=item[2], parse_mode="Markdown")
+                else:
+                    await query.message.reply_text(item[2], parse_mode="Markdown")
+                break
+        await safe_delete(query.message)
 
-# ========== АДМИН ПАНЕЛЬ ==========
+# ========== АДМИН МЕНЮ ==========
 async def admin_menu(update, context):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("Только для администратора.")
         return
+    context.user_data['admin_step'] = None
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ Добавить магазин", callback_data="admin_add_shop")],
-        [InlineKeyboardButton("➖ Удалить магазин", callback_data="admin_del_shop")],
-        [InlineKeyboardButton("➕ Добавить обменник", callback_data="admin_add_exch")],
-        [InlineKeyboardButton("➖ Удалить обменник", callback_data="admin_del_exch")],
-        [InlineKeyboardButton("🛡️ Добавить VPN", callback_data="admin_add_vpn")],
-        [InlineKeyboardButton("🗑️ Удалить VPN", callback_data="admin_del_vpn")],
-        [InlineKeyboardButton("✏️ Правила чата", callback_data="admin_edit_rules")],
-        [InlineKeyboardButton("✏️ Полезные ссылки", callback_data="admin_edit_links")],
-        [InlineKeyboardButton("➕ Добавить вакансию", callback_data="admin_add_job")],
-        [InlineKeyboardButton("➖ Удалить вакансию", callback_data="admin_del_job")],
+        [InlineKeyboardButton("➕ Магазин", callback_data="admin_add_shop"), InlineKeyboardButton("➖ Удалить", callback_data="admin_del_shop")],
+        [InlineKeyboardButton("➕ Обменник", callback_data="admin_add_exch"), InlineKeyboardButton("➖ Удалить", callback_data="admin_del_exch")],
+        [InlineKeyboardButton("➕ VPN", callback_data="admin_add_vpn"), InlineKeyboardButton("➖ Удалить", callback_data="admin_del_vpn")],
+        [InlineKeyboardButton("➕ Вакансия", callback_data="admin_add_job"), InlineKeyboardButton("➖ Удалить", callback_data="admin_del_job")],
+        [InlineKeyboardButton("✏️ Правила", callback_data="admin_edit_rules"), InlineKeyboardButton("✏️ Ссылки", callback_data="admin_edit_links")],
     ])
-    await update.message.reply_text("Меню управления:", reply_markup=keyboard)
+    await update.message.reply_text("Управление:", reply_markup=keyboard)
 
 async def admin_callback(update, context):
     query = update.callback_query
     await query.answer()
+    action = query.data
     await safe_delete(query.message)
-    data = query.data
 
-    if data == "admin_add_shop":
+    context.user_data['admin_action'] = action
+    context.user_data['admin_step'] = 'wait_name'
+
+    if action == "admin_add_shop":
         await query.message.reply_text("Введите название магазина:")
-        return ASK_NAME
-    if data == "admin_del_shop":
-        await query.message.reply_text("Введите название магазина для удаления:")
-        return "del_shop_name"
-    if data == "admin_add_exch":
+    elif action == "admin_add_exch":
         await query.message.reply_text("Введите название обменника:")
-        return "add_exch_name"
-    if data == "admin_del_exch":
-        await query.message.reply_text("Введите название обменника для удаления:")
-        return "del_exch_name"
-    if data == "admin_add_vpn":
+    elif action == "admin_add_vpn":
         await query.message.reply_text("Введите название VPN:")
-        return "add_vpn_name"
-    if data == "admin_del_vpn":
-        await query.message.reply_text("Введите название VPN для удаления:")
-        return "del_vpn_name"
-    if data == "admin_edit_rules":
-        await query.message.reply_text("Отправьте новый текст правил (можно с фото):")
-        return "edit_rules"
-    if data == "admin_edit_links":
-        await query.message.reply_text("Отправьте новый текст полезных ссылок (можно с фото):")
-        return "edit_links"
-    if data == "admin_add_job":
+    elif action == "admin_add_job":
         await query.message.reply_text("Введите название вакансии:")
-        return "add_job_name"
-    if data == "admin_del_job":
+    elif action == "admin_edit_rules":
+        await query.message.reply_text("Отправьте новый текст правил (можно с фото):")
+        context.user_data['admin_step'] = 'wait_info'
+    elif action == "admin_edit_links":
+        await query.message.reply_text("Отправьте новый текст полезных ссылок (можно с фото):")
+        context.user_data['admin_step'] = 'wait_info'
+    elif action == "admin_del_shop":
+        await query.message.reply_text("Введите название магазина для удаления:")
+        context.user_data['admin_step'] = 'wait_delete'
+    elif action == "admin_del_exch":
+        await query.message.reply_text("Введите название обменника для удаления:")
+        context.user_data['admin_step'] = 'wait_delete'
+    elif action == "admin_del_vpn":
+        await query.message.reply_text("Введите название VPN для удаления:")
+        context.user_data['admin_step'] = 'wait_delete'
+    elif action == "admin_del_job":
         await query.message.reply_text("Введите название вакансии для удаления:")
-        return "del_job_name"
-    return ConversationHandler.END
+        context.user_data['admin_step'] = 'wait_delete'
 
-# ========== ДИАЛОГИ ДОБАВЛЕНИЯ ==========
-async def add_shop_name(update, context):
-    context.user_data['shop_name'] = update.message.text
-    await update.message.reply_text("Введите username продавца (без @):")
-    return ASK_USERNAME
-async def add_shop_username(update, context):
-    context.user_data['shop_username'] = update.message.text.strip('@')
-    await update.message.reply_text("Введите описание магазина:")
-    return ASK_DESCRIPTION
-async def add_shop_desc(update, context):
-    context.user_data['shop_desc'] = update.message.text
-    await update.message.reply_text("Отправьте фото (или /skip):")
-    return ASK_PHOTO
-async def add_shop_photo(update, context):
-    photo_id = update.message.photo[-1].file_id if update.message.photo else None
-    if db.add_shop(context.user_data['shop_name'], context.user_data['shop_username'], context.user_data['shop_desc'], photo_id):
-        await update.message.reply_text("✅ Магазин добавлен.")
-    else:
-        await update.message.reply_text("❌ Ошибка: название уже существует.")
-    return ConversationHandler.END
-async def add_shop_skip(update, context):
-    await update.message.reply_text("Фото пропущено")
-    return await add_shop_photo(update, context)
-async def del_shop_name(update, context):
-    if db.delete_shop(update.message.text):
-        await update.message.reply_text("✅ Магазин удалён.")
-    else:
-        await update.message.reply_text("❌ Магазин не найден.")
-    return ConversationHandler.END
+# ========== ОБРАБОТКА СООБЩЕНИЙ ОТ АДМИНА ==========
+async def handle_admin_input(update, context):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    if 'admin_step' not in context.user_data:
+        return
 
-async def add_exch_name(update, context):
-    context.user_data['exch_name'] = update.message.text
-    await update.message.reply_text("Введите username обменника (без @):")
-    return ASK_USERNAME
-async def add_exch_username(update, context):
-    context.user_data['exch_username'] = update.message.text.strip('@')
-    await update.message.reply_text("Введите описание обменника:")
-    return ASK_DESCRIPTION
-async def add_exch_desc(update, context):
-    context.user_data['exch_desc'] = update.message.text
-    await update.message.reply_text("Отправьте фото (или /skip):")
-    return ASK_PHOTO
-async def add_exch_photo(update, context):
-    photo_id = update.message.photo[-1].file_id if update.message.photo else None
-    if db.add_exchanger(context.user_data['exch_name'], context.user_data['exch_username'], context.user_data['exch_desc'], photo_id):
-        await update.message.reply_text("✅ Обменник добавлен.")
-    else:
-        await update.message.reply_text("❌ Ошибка: название уже существует.")
-    return ConversationHandler.END
-async def add_exch_skip(update, context):
-    await update.message.reply_text("Фото пропущено")
-    return await add_exch_photo(update, context)
-async def del_exch_name(update, context):
-    if db.delete_exchanger(update.message.text):
-        await update.message.reply_text("✅ Обменник удалён.")
-    else:
-        await update.message.reply_text("❌ Обменник не найден.")
-    return ConversationHandler.END
+    step = context.user_data['admin_step']
+    action = context.user_data.get('admin_action', '')
+    text = update.message.text
+    photo = update.message.photo[-1].file_id if update.message.photo else None
 
-async def add_vpn_name(update, context):
-    context.user_data['vpn_name'] = update.message.text
-    await update.message.reply_text("Введите username провайдера (без @):")
-    return ASK_USERNAME
-async def add_vpn_username(update, context):
-    context.user_data['vpn_username'] = update.message.text.strip('@')
-    await update.message.reply_text("Введите описание VPN:")
-    return ASK_DESCRIPTION
-async def add_vpn_desc(update, context):
-    context.user_data['vpn_desc'] = update.message.text
-    await update.message.reply_text("Отправьте фото (или /skip):")
-    return ASK_PHOTO
-async def add_vpn_photo(update, context):
-    photo_id = update.message.photo[-1].file_id if update.message.photo else None
-    if db.add_vpn(context.user_data['vpn_name'], context.user_data['vpn_username'], context.user_data['vpn_desc'], photo_id):
-        await update.message.reply_text("✅ VPN добавлен.")
-    else:
-        await update.message.reply_text("❌ Ошибка: название уже существует.")
-    return ConversationHandler.END
-async def add_vpn_skip(update, context):
-    await update.message.reply_text("Фото пропущено")
-    return await add_vpn_photo(update, context)
-async def del_vpn_name(update, context):
-    if db.delete_vpn(update.message.text):
-        await update.message.reply_text("✅ VPN удалён.")
-    else:
-        await update.message.reply_text("❌ VPN не найден.")
-    return ConversationHandler.END
+    if step == 'wait_name':
+        context.user_data['temp_name'] = text
+        await update.message.reply_text("Введите username (без @):")
+        context.user_data['admin_step'] = 'wait_username'
+    elif step == 'wait_username':
+        context.user_data['temp_username'] = text
+        await update.message.reply_text("Введите описание:")
+        context.user_data['admin_step'] = 'wait_desc'
+    elif step == 'wait_desc':
+        context.user_data['temp_desc'] = text
+        await update.message.reply_text("Отправьте фото (или /skip):")
+        context.user_data['admin_step'] = 'wait_photo'
+    elif step == 'wait_photo':
+        if text == "/skip":
+            photo = None
+        table = ""
+        if "add_shop" in action: table = "shops"
+        elif "add_exch" in action: table = "exchangers"
+        elif "add_vpn" in action: table = "vpn"
+        elif "add_job" in action: table = "jobs"
+        if table:
+            if table == "jobs":
+                ok = db.add_item(table, context.user_data['temp_name'], None, context.user_data['temp_desc'], photo)
+            else:
+                ok = db.add_item(table, context.user_data['temp_name'], context.user_data['temp_username'], context.user_data['temp_desc'], photo)
+            if ok:
+                await update.message.reply_text(f"✅ Добавлено в {table}!")
+            else:
+                await update.message.reply_text("❌ Ошибка: возможно, такое название уже есть")
+        context.user_data['admin_step'] = None
+    elif step == 'wait_info':
+        if "edit_rules" in action:
+            db.update_info('rules', text or "", photo)
+            await update.message.reply_text("✅ Правила обновлены!")
+        elif "edit_links" in action:
+            db.update_info('links', text or "", photo)
+            await update.message.reply_text("✅ Ссылки обновлены!")
+        context.user_data['admin_step'] = None
+    elif step == 'wait_delete':
+        table = ""
+        if "del_shop" in action: table = "shops"
+        elif "del_exch" in action: table = "exchangers"
+        elif "del_vpn" in action: table = "vpn"
+        elif "del_job" in action: table = "jobs"
+        if table:
+            if db.delete_item(table, text):
+                await update.message.reply_text(f"✅ Удалено из {table}!")
+            else:
+                await update.message.reply_text("❌ Не найдено")
+        context.user_data['admin_step'] = None
 
-async def edit_rules(update, context):
-    text = update.message.text or ""
-    photo_id = update.message.photo[-1].file_id if update.message.photo else None
-    db.update_info('rules', text, photo_id)
-    await update.message.reply_text("✅ Правила обновлены.")
-    return ConversationHandler.END
-async def edit_links(update, context):
-    text = update.message.text or ""
-    photo_id = update.message.photo[-1].file_id if update.message.photo else None
-    db.update_info('links', text, photo_id)
-    await update.message.reply_text("✅ Ссылки обновлены.")
-    return ConversationHandler.END
-
-async def add_job_name(update, context):
-    context.user_data['job_name'] = update.message.text
-    await update.message.reply_text("Введите описание вакансии:")
-    return ASK_DESCRIPTION
-async def add_job_desc(update, context):
-    context.user_data['job_desc'] = update.message.text
-    await update.message.reply_text("Отправьте фото (или /skip):")
-    return ASK_PHOTO
-async def add_job_photo(update, context):
-    photo_id = update.message.photo[-1].file_id if update.message.photo else None
-    if db.add_job(context.user_data['job_name'], context.user_data['job_desc'], photo_id):
-        await update.message.reply_text("✅ Вакансия добавлена.")
+async def skip_command(update, context):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    if context.user_data.get('admin_step') == 'wait_photo':
+        await handle_admin_input(update, context)
     else:
-        await update.message.reply_text("❌ Ошибка: название уже существует.")
-    return ConversationHandler.END
-async def add_job_skip(update, context):
-    await update.message.reply_text("Фото пропущено")
-    return await add_job_photo(update, context)
-async def del_job_name(update, context):
-    if db.delete_job(update.message.text):
-        await update.message.reply_text("✅ Вакансия удалена.")
-    else:
-        await update.message.reply_text("❌ Вакансия не найдена.")
-    return ConversationHandler.END
+        await update.message.reply_text("Сейчас не нужно фото")
 
-async def cancel(update, context):
-    await update.message.reply_text("Отменено.")
-    return ConversationHandler.END
-
-# ========== ГРУППОВЫЕ ОБРАБОТЧИКИ ==========
+# ========== ГРУППОВЫЕ КОМАНДЫ ==========
 async def brand_command(update, context):
     if update.effective_chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
         await update.message.reply_text("Только в группах.")
@@ -450,58 +285,31 @@ async def brand_command(update, context):
     await update.message.reply_text("Выберите категорию:", reply_markup=MAIN_MENU)
 
 async def handle_group_text(update, context):
-    if update.effective_chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
-        return
-    if update.message.from_user.id == context.bot.id:
-        return
-    text = update.message.text.lower()
-    if any(w in text for w in ["магаз", "шоп", "подскажите", "обмен", "обменник", "купить"]):
-        await update.message.reply_text("Вам нужна помощь? Выберите категорию:", reply_markup=MAIN_MENU)
+    if update.effective_chat.type in [ChatType.GROUP, ChatType.SUPERGROUP] and update.message.from_user.id != context.bot.id:
+        if any(w in update.message.text.lower() for w in ["магаз", "шоп", "подскажите", "обмен", "обменник", "купить"]):
+            await update.message.reply_text("Вам нужна помощь? Выберите категорию:", reply_markup=MAIN_MENU)
 
-async def bot_added_to_group(update, context):
-    if update.effective_chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
-        return
-    if update.message and update.message.new_chat_members:
-        for member in update.message.new_chat_members:
-            if member.id == context.bot.id:
-                await update.message.reply_text("🤖 Меню команд: /brand", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Открыть меню", callback_data="main_menu")]]))
+async def bot_added(update, context):
+    if update.effective_chat.type in [ChatType.GROUP, ChatType.SUPERGROUP] and update.message and update.message.new_chat_members:
+        for m in update.message.new_chat_members:
+            if m.id == context.bot.id:
+                await update.message.reply_text("🤖 Бот готов! Используйте /brand", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Открыть меню", callback_data="main_menu")]]))
                 return
 
-async def start_private(update, context):
+async def start(update, context):
     await update.message.reply_text("👋 Я бот для групп. Добавьте меня в чат и используйте /brand\n\nАдмин: /admin")
 
 # ========== ЗАПУСК ==========
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start_private))
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_menu))
     app.add_handler(CommandHandler("brand", brand_command))
-    app.add_handler(CommandHandler("cancel", cancel))
+    app.add_handler(CommandHandler("skip", skip_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_input))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_text))
-
-    # Магазины
-    app.add_handler(ConversationHandler(entry_points=[CallbackQueryHandler(admin_callback, pattern="^admin_add_shop$")], states={ASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_shop_name)], ASK_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_shop_username)], ASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_shop_desc)], ASK_PHOTO: [MessageHandler(filters.PHOTO, add_shop_photo), MessageHandler(filters.COMMAND & filters.Regex("^/skip$"), add_shop_skip)]}, fallbacks=[CommandHandler("cancel", cancel)]))
-    app.add_handler(ConversationHandler(entry_points=[CallbackQueryHandler(admin_callback, pattern="^admin_del_shop$")], states={"del_shop_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, del_shop_name)]}, fallbacks=[CommandHandler("cancel", cancel)]))
-
-    # Обменники
-    app.add_handler(ConversationHandler(entry_points=[CallbackQueryHandler(admin_callback, pattern="^admin_add_exch$")], states={"add_exch_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, add_exch_name)], ASK_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_exch_username)], ASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_exch_desc)], ASK_PHOTO: [MessageHandler(filters.PHOTO, add_exch_photo), MessageHandler(filters.COMMAND & filters.Regex("^/skip$"), add_exch_skip)]}, fallbacks=[CommandHandler("cancel", cancel)]))
-    app.add_handler(ConversationHandler(entry_points=[CallbackQueryHandler(admin_callback, pattern="^admin_del_exch$")], states={"del_exch_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, del_exch_name)]}, fallbacks=[CommandHandler("cancel", cancel)]))
-
-    # VPN
-    app.add_handler(ConversationHandler(entry_points=[CallbackQueryHandler(admin_callback, pattern="^admin_add_vpn$")], states={"add_vpn_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, add_vpn_name)], ASK_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_vpn_username)], ASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_vpn_desc)], ASK_PHOTO: [MessageHandler(filters.PHOTO, add_vpn_photo), MessageHandler(filters.COMMAND & filters.Regex("^/skip$"), add_vpn_skip)]}, fallbacks=[CommandHandler("cancel", cancel)]))
-    app.add_handler(ConversationHandler(entry_points=[CallbackQueryHandler(admin_callback, pattern="^admin_del_vpn$")], states={"del_vpn_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, del_vpn_name)]}, fallbacks=[CommandHandler("cancel", cancel)]))
-
-    # Инфо
-    app.add_handler(ConversationHandler(entry_points=[CallbackQueryHandler(admin_callback, pattern="^admin_edit_rules$")], states={"edit_rules": [MessageHandler(filters.TEXT | filters.PHOTO, edit_rules)]}, fallbacks=[CommandHandler("cancel", cancel)]))
-    app.add_handler(ConversationHandler(entry_points=[CallbackQueryHandler(admin_callback, pattern="^admin_edit_links$")], states={"edit_links": [MessageHandler(filters.TEXT | filters.PHOTO, edit_links)]}, fallbacks=[CommandHandler("cancel", cancel)]))
-
-    # Вакансии
-    app.add_handler(ConversationHandler(entry_points=[CallbackQueryHandler(admin_callback, pattern="^admin_add_job$")], states={"add_job_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, add_job_name)], ASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_job_desc)], ASK_PHOTO: [MessageHandler(filters.PHOTO, add_job_photo), MessageHandler(filters.COMMAND & filters.Regex("^/skip$"), add_job_skip)]}, fallbacks=[CommandHandler("cancel", cancel)]))
-    app.add_handler(ConversationHandler(entry_points=[CallbackQueryHandler(admin_callback, pattern="^admin_del_job$")], states={"del_job_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, del_job_name)]}, fallbacks=[CommandHandler("cancel", cancel)]))
-
-    app.add_handler(CallbackQueryHandler(inline_callback, pattern="^(show_|main_menu|shop_|exch_|vpn_|info_|job_)"))
-    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot_added_to_group))
-
-    print("Бот запущен. Все диалоги работают.")
+    app.add_handler(CallbackQueryHandler(main_callback, pattern="^(show_|main_menu|info_|shop_|exch_|vpn_|job_)"))
+    app.add_handler(CallbackQueryHandler(admin_callback, pattern="^admin_"))
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot_added))
+    print("Бот запущен! Упрощённая система добавления без ConversationHandler.")
     app.run_polling()
