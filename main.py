@@ -1,7 +1,5 @@
 import os
 import sqlite3
-import asyncio
-from datetime import datetime
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler, ContextTypes
 from telegram.constants import ChatType
@@ -208,6 +206,18 @@ async def inline_callback(update, context):
         await safe_delete(query.message)
         return
 
+    if data == "show_jobs":
+        items = db.get_jobs()
+        if not items:
+            await query.message.reply_text("Список вакансий пуст.")
+            await safe_delete(query.message)
+            return
+        kb = [[InlineKeyboardButton(i[0], callback_data=f"job_{i[0]}")] for i in items]
+        kb.append([InlineKeyboardButton("◀️ Назад", callback_data="main_menu")])
+        await query.message.reply_text("Выберите вакансию:", reply_markup=InlineKeyboardMarkup(kb))
+        await safe_delete(query.message)
+        return
+
     if data == "show_info":
         kb = [
             [InlineKeyboardButton("📜 Правила чата", callback_data="info_rules")],
@@ -228,18 +238,6 @@ async def inline_callback(update, context):
         kb = [[InlineKeyboardButton(i[0], callback_data=f"vpn_{i[1]}")] for i in items]
         kb.append([InlineKeyboardButton("◀️ Назад", callback_data="show_info")])
         await query.message.reply_text("Выберите VPN:", reply_markup=InlineKeyboardMarkup(kb))
-        await safe_delete(query.message)
-        return
-
-    if data == "show_jobs":
-        items = db.get_jobs()
-        if not items:
-            await query.message.reply_text("Список вакансий пуст.")
-            await safe_delete(query.message)
-            return
-        kb = [[InlineKeyboardButton(i[0], callback_data=f"job_{i[0]}")] for i in items]
-        kb.append([InlineKeyboardButton("◀️ Назад", callback_data="main_menu")])
-        await query.message.reply_text("Выберите вакансию:", reply_markup=InlineKeyboardMarkup(kb))
         await safe_delete(query.message)
         return
 
@@ -408,7 +406,7 @@ async def admin_callback(update, context):
         return ConversationHandler.END
     return ConversationHandler.END
 
-# ========== ДИАЛОГИ ДОБАВЛЕНИЯ ==========
+# ========== ДИАЛОГИ ДОБАВЛЕНИЯ (ВСЕ ФУНКЦИИ) ==========
 async def add_shop_name(update, context):
     context.user_data['shop_name'] = update.message.text
     await update.message.reply_text("Введите username продавца (без @):")
@@ -611,15 +609,18 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start_private))
     app.add_handler(CommandHandler("admin", admin_menu))
     app.add_handler(CommandHandler("brand", brand_command))
+    app.add_handler(CommandHandler("cancel", cancel))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_text))
 
     # Магазины
     app.add_handler(ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_callback, pattern="^add_shop$")],
-        states={ASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_shop_name)],
-                ASK_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_shop_username)],
-                ASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_shop_desc)],
-                ASK_PHOTO: [MessageHandler(filters.PHOTO, add_shop_photo), MessageHandler(filters.COMMAND & filters.Regex("^/skip$"), add_shop_skip)]},
+        states={
+            ASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_shop_name)],
+            ASK_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_shop_username)],
+            ASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_shop_desc)],
+            ASK_PHOTO: [MessageHandler(filters.PHOTO, add_shop_photo), MessageHandler(filters.COMMAND & filters.Regex("^/skip$"), add_shop_skip)]
+        },
         fallbacks=[CommandHandler("cancel", cancel)]
     ))
     app.add_handler(ConversationHandler(
@@ -631,10 +632,12 @@ if __name__ == "__main__":
     # Обменники
     app.add_handler(ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_callback, pattern="^add_exch$")],
-        states={"add_exch_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, add_exch_name)],
-                ASK_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_exch_username)],
-                ASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_exch_desc)],
-                ASK_PHOTO: [MessageHandler(filters.PHOTO, add_exch_photo), MessageHandler(filters.COMMAND & filters.Regex("^/skip$"), add_exch_skip)]},
+        states={
+            "add_exch_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, add_exch_name)],
+            ASK_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_exch_username)],
+            ASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_exch_desc)],
+            ASK_PHOTO: [MessageHandler(filters.PHOTO, add_exch_photo), MessageHandler(filters.COMMAND & filters.Regex("^/skip$"), add_exch_skip)]
+        },
         fallbacks=[CommandHandler("cancel", cancel)]
     ))
     app.add_handler(ConversationHandler(
@@ -646,10 +649,12 @@ if __name__ == "__main__":
     # VPN
     app.add_handler(ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_callback, pattern="^add_vpn$")],
-        states={"add_vpn_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, add_vpn_name)],
-                ASK_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_vpn_username)],
-                ASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_vpn_desc)],
-                ASK_PHOTO: [MessageHandler(filters.PHOTO, add_vpn_photo), MessageHandler(filters.COMMAND & filters.Regex("^/skip$"), add_vpn_skip)]},
+        states={
+            "add_vpn_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, add_vpn_name)],
+            ASK_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_vpn_username)],
+            ASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_vpn_desc)],
+            ASK_PHOTO: [MessageHandler(filters.PHOTO, add_vpn_photo), MessageHandler(filters.COMMAND & filters.Regex("^/skip$"), add_vpn_skip)]
+        },
         fallbacks=[CommandHandler("cancel", cancel)]
     ))
     app.add_handler(ConversationHandler(
@@ -673,9 +678,11 @@ if __name__ == "__main__":
     # Вакансии
     app.add_handler(ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_callback, pattern="^add_job$")],
-        states={"add_job_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, add_job_name)],
-                ASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_job_desc)],
-                ASK_PHOTO: [MessageHandler(filters.PHOTO, add_job_photo), MessageHandler(filters.COMMAND & filters.Regex("^/skip$"), add_job_skip)]},
+        states={
+            "add_job_name": [MessageHandler(filters.TEXT & ~filters.COMMAND, add_job_name)],
+            ASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_job_desc)],
+            ASK_PHOTO: [MessageHandler(filters.PHOTO, add_job_photo), MessageHandler(filters.COMMAND & filters.Regex("^/skip$"), add_job_skip)]
+        },
         fallbacks=[CommandHandler("cancel", cancel)]
     ))
     app.add_handler(ConversationHandler(
@@ -689,5 +696,5 @@ if __name__ == "__main__":
 
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot_added_to_group))
 
-    print("Бот запущен. Без напоминаний, без job-queue.")
+    print("Бот запущен. Все диалоги работают корректно.")
     app.run_polling()
