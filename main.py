@@ -13,8 +13,8 @@ from telegram.constants import ChatType
 # =====================================================================
 # КОНФИГУРАЦИЯ
 # =====================================================================
-BOT_TOKEN = "8643635341:AAG-H4T-Fe_LcjD4t9VAhwKLFt3bAG5P1rI"
-ADMIN_IDS = [7956317602, 5243173039]
+BOT_TOKEN = "ВАШ_ТОКЕН_СЮДА"
+ADMIN_IDS = [12345678, 87654321]
 
 TRIGGER_WORDS = ["привет", "как ты", "салам"]
 REPLY_WORDS = ["Привет 👋", "Салам 🤝", "Здорова 😎"]
@@ -164,8 +164,11 @@ class Database:
             self.cursor.execute(f"INSERT INTO {table} (name, username, description, photo, views) VALUES (?,?,?,?,0)",
                                 (name, username, desc, photo))
             self.conn.commit()
-            return True
-        except: return False
+            return True, None
+        except sqlite3.IntegrityError:
+            return False, "Такой уже есть"
+        except Exception as e:
+            return False, str(e)
 
     def delete_item(self, table, name):
         self.cursor.execute(f"DELETE FROM {table} WHERE name=?", (name,))
@@ -705,7 +708,6 @@ async def main_callback(update, context):
     mid = query.message.message_id
     data = query.data
 
-    # Открытие меню из закреплённого сообщения — всегда создаём новое меню для пользователя
     if data == "open_menu":
         await query.answer()
         photo_id = db.get_menu_photo()
@@ -715,14 +717,12 @@ async def main_callback(update, context):
             msg = await query.message.reply_text(WELCOME_TEXT, reply_markup=MAIN_MENU)
         return
 
-    # Для остальных колбэков — проверка владельца меню
     owner = get_menu_owner_cb(context, mid)
     if owner and uid != owner:
         await query.answer("⚠️ Это меню другого пользователя. Нажмите «🛍️ Открыть меню» в закреплённом сообщении.", show_alert=True)
         return
 
     await query.answer()
-    data = query.data
 
     if data == "main_menu":
         clear_menu_owner_cb(context, mid)
@@ -921,7 +921,6 @@ async def bot_added_to_group(update, context):
             except:
                 pass
 
-            # Удаляем системное сообщение о добавлении бота
             try:
                 await update.message.delete()
             except:
@@ -1008,9 +1007,9 @@ async def bingo_register_handler(update, context):
         await query.answer(err, show_alert=True)
         return
 
-    if sponsor_links:
+    if sponcor_links:
         not_sub = []
-        for s in sponsor_links:
+        for s in sponcor_links:
             try:
                 m = await context.bot.get_chat_member(s['chat_id'], uid)
                 if m.status in ['left', 'kicked']: not_sub.append(s)
@@ -1028,7 +1027,7 @@ async def check_sponsor_subscription(update, context):
     uid = query.from_user.id
 
     not_sub = []
-    for s in sponsor_links:
+    for s in sponcor_links:
         try:
             m = await context.bot.get_chat_member(s['chat_id'], uid)
             if m.status in ['left', 'kicked']: not_sub.append(s)
@@ -1176,16 +1175,16 @@ async def setup_callback(update, context):
         return
     await query.answer()
 
-    global registration_open, sponsor_links
+    global registration_open, sponcor_links
 
     if query.data == "setup_no_sponsor":
-        sponsor_links = []
+        sponcor_links = []
         registration_open = True
         await query.message.edit_text("✅ Регистрация открыта! Без спонсоров.\n\nВ группе появится уведомление.")
         await notify_group_registration(context)
 
     elif query.data == "setup_add_sponsor":
-        sponsor_links = []
+        sponcor_links = []
         context.user_data['admin_step'] = 'wait_sponsor_name'
         await query.message.edit_text("🔗 **Шаг 1/2**\nВведите название кнопки спонсора:")
 
@@ -1221,7 +1220,7 @@ async def startgame_command(update, context):
 
 async def stopgame_command(update, context):
     global game_active, players, bingo_history, history_msg_id, progress_msg_id
-    global registration_open, current_winner, game_paused, players_table_msg_id, sponsor_links
+    global registration_open, current_winner, game_paused, players_table_msg_id, sponcor_links
 
     if not db.is_admin(update.effective_user.id):
         await safe_reply(update.message, "❌ Только админ.")
@@ -1229,12 +1228,12 @@ async def stopgame_command(update, context):
 
     game_active = False; players.clear(); bingo_history.clear(); history_msg_id = None
     progress_msg_id = None; registration_open = False; current_winner = None
-    game_paused = False; players_table_msg_id = None; sponsor_links = []
+    game_paused = False; players_table_msg_id = None; sponcor_links = []
     await safe_reply(update.message, "⏹ Игра остановлена. Данные очищены.")
 
 async def bingo_command(update, context):
     global game_active, players, bingo_history, history_msg_id, progress_msg_id
-    global registration_open, current_winner, game_paused, sponsor_links
+    global registration_open, current_winner, game_paused, sponcor_links
 
     if not db.is_admin(update.effective_user.id):
         await safe_reply(update.message, "❌ Только админ.")
@@ -1425,6 +1424,9 @@ async def admin_callback_handler(update, context):
 
     if action.startswith("admin_add_") and action not in ("admin_add_choose", "admin_add_donation"):
         table = action.replace("admin_add_", "")
+        # Очищаем предыдущие данные
+        for key in ('temp_name', 'temp_username', 'temp_desc', 'admin_table'):
+            context.user_data.pop(key, None)
         context.user_data['admin_step'] = 'wait_name'
         context.user_data['admin_table'] = table
         names = {"shop": "магазина", "exch": "обменника", "vpn": "VPN", "job": "вакансии"}
@@ -1465,7 +1467,7 @@ async def admin_callback_handler(update, context):
 
 async def admin_input_handler(update, context):
     global game_active, players, bingo_history, history_msg_id, progress_msg_id
-    global game_paused, players_table_msg_id, current_winner, sponsor_links
+    global game_paused, players_table_msg_id, current_winner, sponcor_links
     global registration_open
 
     if not db.is_admin(update.effective_user.id):
@@ -1503,7 +1505,7 @@ async def admin_input_handler(update, context):
 
             game_active = False; players.clear(); bingo_history.clear()
             history_msg_id = None; progress_msg_id = None; game_paused = False
-            players_table_msg_id = None; current_winner = None; sponsor_links = []
+            players_table_msg_id = None; current_winner = None; sponcor_links = []
             await safe_reply(update.message, "✅ Победитель опубликован, игра завершена!")
             return
 
@@ -1519,7 +1521,7 @@ async def admin_input_handler(update, context):
             name = context.user_data.get('sponsor_name', 'Спонсор')
             url = text.strip()
             chat_id = extract_chat_id(url)
-            sponsor_links.append({"text": name, "url": url, "chat_id": chat_id})
+            sponcor_links.append({"text": name, "url": url, "chat_id": chat_id})
             context.user_data.pop('admin_step', None)
             context.user_data.pop('setting_up_bingo', None)
             registration_open = True
@@ -1550,8 +1552,11 @@ async def admin_input_handler(update, context):
             await safe_reply(update.message, "❌ Отправьте фото или напишите /skip чтобы пропустить.")
             return
         table = context.user_data.get('admin_table', '')
-        ok = db.add_item(table, context.user_data['temp_name'], context.user_data['temp_username'], context.user_data['temp_desc'], photo)
-        await safe_reply(update.message, "✅ Добавлено!" if ok else "❌ Ошибка (возможно, дубль).")
+        ok, err = db.add_item(table, context.user_data['temp_name'], context.user_data['temp_username'], context.user_data['temp_desc'], photo)
+        if ok:
+            await safe_reply(update.message, "✅ Добавлено!")
+        else:
+            await safe_reply(update.message, f"❌ Ошибка: {err or 'неизвестная ошибка'}")
         context.user_data['admin_step'] = None
     elif step == 'wait_info':
         key = context.user_data.get('admin_info_key', '')
