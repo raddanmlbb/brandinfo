@@ -13,8 +13,8 @@ from telegram.constants import ChatType
 # =====================================================================
 # КОНФИГУРАЦИЯ
 # =====================================================================
-BOT_TOKEN = "ВАШ_ТОКЕН_СЮДА"
-ADMIN_IDS = [12345678, 87654321]
+BOT_TOKEN = "8643635341:AAG-H4T-Fe_LcjD4t9VAhwKLFt3bAG5P1rI"
+ADMIN_IDS = [7956317602, 5243173039]
 
 TRIGGER_WORDS = ["привет", "как ты", "салам"]
 REPLY_WORDS = ["Привет 👋", "Салам 🤝", "Здорова 😎"]
@@ -1036,7 +1036,6 @@ async def bingo_progress_handler(update, context):
 # =====================================================================
 async def handle_bingo_numbers(update, context):
     if 'awaiting_numbers' not in context.user_data:
-        # Чужие числа — проверяем, не пытается ли кто-то записаться без кнопки
         text = update.message.text.strip()
         parts = text.split()
         if len(parts) in (5, 6) and all(p.lstrip('-').isdigit() for p in parts):
@@ -1165,17 +1164,22 @@ async def startgame_command(update, context):
     await safe_reply(update.message, f"🚫 Регистрация закрыта!\n🎲 **Игра началась!**\nУчастников: {len(players)}\n\nАдмин крутит: /bingo", reply_markup=menu)
 
 async def stopgame_command(update, context):
+    global game_active, players, bingo_history, history_msg_id, progress_msg_id
+    global registration_open, current_winner, game_paused, players_table_msg_id, sponcor_links
+
     if not db.is_admin(update.effective_user.id):
         await safe_reply(update.message, "❌ Только админ.")
         return
-    global game_active, players, bingo_history, history_msg_id, progress_msg_id
-    global registration_open, current_winner, game_paused, players_table_msg_id, sponcor_links
+
     game_active = False; players.clear(); bingo_history.clear(); history_msg_id = None
     progress_msg_id = None; registration_open = False; current_winner = None
     game_paused = False; players_table_msg_id = None; sponcor_links = []
     await safe_reply(update.message, "⏹ Игра остановлена. Данные очищены.")
 
 async def bingo_command(update, context):
+    global game_active, players, bingo_history, history_msg_id, progress_msg_id
+    global registration_open, current_winner, game_paused, sponcor_links
+
     if not db.is_admin(update.effective_user.id):
         await safe_reply(update.message, "❌ Только админ.")
         return
@@ -1193,6 +1197,9 @@ async def bingo_command(update, context):
         await safe_reply(update.message, "Нет участников.")
         return
 
+    if registration_open:
+        registration_open = False
+
     count = get_random_count()
     numbers = [random.randint(1, 100) for _ in range(count)]
     numbers_str = ", ".join(str(n) for n in numbers)
@@ -1207,7 +1214,6 @@ async def bingo_command(update, context):
     winners = [(uid, data["username"]) for uid, data in players.items() if len(data["found"]) == data["max_needed"]]
 
     if winners:
-        global current_winner
         winner_uid, winner_uname = random.choice(winners)
         current_winner = {"user_id": winner_uid, "username": winner_uname}
         game_paused = True
@@ -1231,7 +1237,6 @@ async def bingo_command(update, context):
 
     history = bingo_history[-30:]
     text = "🎰 История:\n" + "\n".join(history)
-    global history_msg_id
     if history_msg_id:
         await safe_edit(context.bot, update.effective_chat.id, history_msg_id, text)
     else:
@@ -1403,6 +1408,10 @@ async def admin_callback_handler(update, context):
         return
 
 async def admin_input_handler(update, context):
+    global game_active, players, bingo_history, history_msg_id, progress_msg_id
+    global game_paused, players_table_msg_id, current_winner, sponcor_links
+    global registration_open
+
     if not db.is_admin(update.effective_user.id):
         return
 
@@ -1430,8 +1439,6 @@ async def admin_input_handler(update, context):
                 if uid != winner_uid: db.add_game(uid)
             del admin_form_data[update.effective_user.id]
 
-            global game_active, players, bingo_history, history_msg_id, progress_msg_id
-            global game_paused, players_table_msg_id, current_winner, sponcor_links
             game_active = False; players.clear(); bingo_history.clear()
             history_msg_id = None; progress_msg_id = None; game_paused = False
             players_table_msg_id = None; current_winner = None; sponcor_links = []
@@ -1450,7 +1457,6 @@ async def admin_input_handler(update, context):
             name = context.user_data.get('sponsor_name', 'Спонсор')
             url = update.message.text.strip()
             chat_id = extract_chat_id(url)
-            global registration_open, sponcor_links
             sponcor_links.append({"text": name, "url": url, "chat_id": chat_id})
             context.user_data.pop('admin_step', None)
             context.user_data.pop('setting_up_bingo', None)
