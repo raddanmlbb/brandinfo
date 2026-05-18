@@ -13,8 +13,8 @@ from telegram.constants import ChatType
 # =====================================================================
 # КОНФИГУРАЦИЯ
 # =====================================================================
-BOT_TOKEN = "8643635341:AAG-H4T-Fe_LcjD4t9VAhwKLFt3bAG5P1rI"
-ADMIN_IDS = [7956317602, 5243173039]
+BOT_TOKEN = "ВАШ_ТОКЕН_СЮДА"
+ADMIN_IDS = [12345678, 87654321]
 
 TRIGGER_WORDS = ["привет", "как ты", "салам"]
 REPLY_WORDS = ["Привет 👋", "Салам 🤝", "Здорова 😎"]
@@ -473,19 +473,13 @@ def profile_text(uid):
     if first: text += f"🕐 В чате с: {first}\n"
     return text
 
-def set_menu_owner(context, msg_id, uid):
-    context.user_data[f"menu_{msg_id}"] = uid
-
-def get_menu_owner(context, msg_id):
-    return context.user_data.get(f"menu_{msg_id}")
-
-def clear_menu_owner(context, msg_id):
-    if f"menu_{msg_id}" in context.user_data:
-        del context.user_data[f"menu_{msg_id}"]
-
 # =====================================================================
 # КЛАВИАТУРЫ
 # =====================================================================
+PINNED_MENU_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🛍️ Открыть меню Brandoвичок", callback_data="open_menu")]
+])
+
 MAIN_MENU = InlineKeyboardMarkup([
     [InlineKeyboardButton("🎰 Бинго — игра на удачу", callback_data="mode_bingo")],
     [InlineKeyboardButton("🛍️ Магазины и обменники", callback_data="mode_shops")],
@@ -629,7 +623,6 @@ async def start(update, context):
             msg = await safe_send(context.bot, update.effective_chat.id, WELCOME_TEXT, reply_markup=MAIN_MENU)
         else:
             msg = await update.message.reply_text(WELCOME_TEXT, reply_markup=MAIN_MENU)
-        if msg: set_menu_owner(context, msg.message_id, uid)
 
 async def brand_command(update, context):
     if update.effective_chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]: return
@@ -639,7 +632,6 @@ async def brand_command(update, context):
         msg = await update.message.reply_photo(photo_id, caption=WELCOME_TEXT, reply_markup=MAIN_MENU)
     else:
         msg = await update.message.reply_text(WELCOME_TEXT, reply_markup=MAIN_MENU)
-    if msg: set_menu_owner(context, msg.message_id, uid)
 
 async def stat_command(update, context):
     page = context.user_data.get('stat_page', 0)
@@ -711,45 +703,57 @@ async def main_callback(update, context):
     query = update.callback_query
     uid = query.from_user.id
     mid = query.message.message_id
-    owner = get_menu_owner(context, mid)
+    data = query.data
 
+    # Открытие меню из закреплённого сообщения — всегда создаём новое меню для пользователя
+    if data == "open_menu":
+        await query.answer()
+        photo_id = db.get_menu_photo()
+        if photo_id:
+            msg = await safe_send(context.bot, query.message.chat_id, WELCOME_TEXT, reply_markup=MAIN_MENU)
+        else:
+            msg = await query.message.reply_text(WELCOME_TEXT, reply_markup=MAIN_MENU)
+        return
+
+    # Для остальных колбэков — проверка владельца меню
+    owner = get_menu_owner_cb(context, mid)
     if owner and uid != owner:
-        await query.answer("⚠️ Это меню другого пользователя. Используйте /brand для своего меню.", show_alert=True)
+        await query.answer("⚠️ Это меню другого пользователя. Нажмите «🛍️ Открыть меню» в закреплённом сообщении.", show_alert=True)
         return
 
     await query.answer()
     data = query.data
 
     if data == "main_menu":
-        clear_menu_owner(context, mid)
+        clear_menu_owner_cb(context, mid)
         photo_id = db.get_menu_photo()
         if photo_id:
             msg = await safe_send(context.bot, query.message.chat_id, WELCOME_TEXT, reply_markup=MAIN_MENU)
         else:
             msg = await query.message.reply_text(WELCOME_TEXT, reply_markup=MAIN_MENU)
-        if msg: set_menu_owner(context, msg.message_id, uid)
+        if msg: set_menu_owner_cb(context, msg.message_id, uid)
         await safe_delete(context.bot, query.message.chat_id, mid)
         return
 
     if data == "mode_bingo":
         menu, status = bingo_menu()
         await query.message.edit_text(f"{status}Выберите действие:", reply_markup=menu)
-        set_menu_owner(context, mid, uid)
+        set_menu_owner_cb(context, mid, uid)
         return
 
     if data == "mode_shops":
         await query.message.edit_text("🛍️ **Магазины и обменники**\nВыберите категорию:", reply_markup=SHOPS_MENU)
-        set_menu_owner(context, mid, uid)
+        set_menu_owner_cb(context, mid, uid)
         return
 
     if data == "mode_stats":
         await query.message.edit_text("📊 **Статистика чата**\nВыберите:", reply_markup=STATS_MENU)
-        set_menu_owner(context, mid, uid)
+        set_menu_owner_cb(context, mid, uid)
         return
 
     if data == "mode_info":
         await query.message.edit_text("ℹ️ **Информация**\nВыберите:", reply_markup=INFO_MENU)
-        set_menu_owner(context, mid, uid)
+        set_menu_owner_cb(context, mid, uid)
         return
 
     # --- Бинго колбэки ---
@@ -874,6 +878,58 @@ async def main_callback(update, context):
         return
 
 # =====================================================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ МЕНЮ
+# =====================================================================
+def get_menu_owner_cb(context, msg_id):
+    return context.bot_data.get(f"menu_{msg_id}")
+
+def set_menu_owner_cb(context, msg_id, uid):
+    context.bot_data[f"menu_{msg_id}"] = uid
+
+def clear_menu_owner_cb(context, msg_id):
+    if f"menu_{msg_id}" in context.bot_data:
+        del context.bot_data[f"menu_{msg_id}"]
+
+# =====================================================================
+# ЗАКРЕПЛЕНИЕ МЕНЮ ПРИ ДОБАВЛЕНИИ БОТА В ГРУППУ
+# =====================================================================
+async def bot_added_to_group(update, context):
+    if update.effective_chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+        return
+    if not update.message or not update.message.new_chat_members:
+        return
+
+    for member in update.message.new_chat_members:
+        if member.id == context.bot.id:
+            photo_id = db.get_menu_photo()
+            caption = "🤖 **Brandoвичок** готов к работе!\n\nНажми на кнопку чтобы открыть меню:"
+
+            if photo_id:
+                msg = await update.message.reply_photo(
+                    photo_id,
+                    caption=caption,
+                    reply_markup=PINNED_MENU_KEYBOARD
+                )
+            else:
+                msg = await update.message.reply_text(
+                    caption,
+                    reply_markup=PINNED_MENU_KEYBOARD
+                )
+
+            try:
+                await msg.pin(disable_notification=True)
+            except:
+                pass
+
+            # Удаляем системное сообщение о добавлении бота
+            try:
+                await update.message.delete()
+            except:
+                pass
+
+            return
+
+# =====================================================================
 # ПОКАЗ СПИСКОВ И КАРТОЧЕК
 # =====================================================================
 async def show_items_list(update, context, table, title, back_cb, item_type):
@@ -889,7 +945,7 @@ async def show_items_list(update, context, table, title, back_cb, item_type):
         kb.append([InlineKeyboardButton(lbl, callback_data=cb)])
     kb.append([InlineKeyboardButton("◀️ Назад", callback_data=back_cb)])
     await query.message.edit_text(f"📋 {title}:", reply_markup=InlineKeyboardMarkup(kb))
-    set_menu_owner(context, query.message.message_id, query.from_user.id)
+    set_menu_owner_cb(context, query.message.message_id, query.from_user.id)
 
 async def show_item_card(update, context, table, title, back_cb, identifier, item_type):
     query = update.callback_query
@@ -911,7 +967,7 @@ async def show_item_card(update, context, table, title, back_cb, identifier, ite
         msg = await context.bot.send_photo(query.message.chat_id, photo_id, caption=caption, reply_markup=InlineKeyboardMarkup(kb))
     else:
         msg = await query.message.edit_text(caption, reply_markup=InlineKeyboardMarkup(kb))
-    set_menu_owner(context, msg.message_id, query.from_user.id)
+    set_menu_owner_cb(context, msg.message_id, query.from_user.id)
 
 async def show_popular_handler(update, context):
     query = update.callback_query
@@ -952,9 +1008,9 @@ async def bingo_register_handler(update, context):
         await query.answer(err, show_alert=True)
         return
 
-    if sponcor_links:
+    if sponsor_links:
         not_sub = []
-        for s in sponcor_links:
+        for s in sponsor_links:
             try:
                 m = await context.bot.get_chat_member(s['chat_id'], uid)
                 if m.status in ['left', 'kicked']: not_sub.append(s)
@@ -972,7 +1028,7 @@ async def check_sponsor_subscription(update, context):
     uid = query.from_user.id
 
     not_sub = []
-    for s in sponcor_links:
+    for s in sponsor_links:
         try:
             m = await context.bot.get_chat_member(s['chat_id'], uid)
             if m.status in ['left', 'kicked']: not_sub.append(s)
@@ -1120,16 +1176,16 @@ async def setup_callback(update, context):
         return
     await query.answer()
 
-    global registration_open, sponcor_links
+    global registration_open, sponsor_links
 
     if query.data == "setup_no_sponsor":
-        sponcor_links = []
+        sponsor_links = []
         registration_open = True
         await query.message.edit_text("✅ Регистрация открыта! Без спонсоров.\n\nВ группе появится уведомление.")
         await notify_group_registration(context)
 
     elif query.data == "setup_add_sponsor":
-        sponcor_links = []
+        sponsor_links = []
         context.user_data['admin_step'] = 'wait_sponsor_name'
         await query.message.edit_text("🔗 **Шаг 1/2**\nВведите название кнопки спонсора:")
 
@@ -1165,7 +1221,7 @@ async def startgame_command(update, context):
 
 async def stopgame_command(update, context):
     global game_active, players, bingo_history, history_msg_id, progress_msg_id
-    global registration_open, current_winner, game_paused, players_table_msg_id, sponcor_links
+    global registration_open, current_winner, game_paused, players_table_msg_id, sponsor_links
 
     if not db.is_admin(update.effective_user.id):
         await safe_reply(update.message, "❌ Только админ.")
@@ -1173,12 +1229,12 @@ async def stopgame_command(update, context):
 
     game_active = False; players.clear(); bingo_history.clear(); history_msg_id = None
     progress_msg_id = None; registration_open = False; current_winner = None
-    game_paused = False; players_table_msg_id = None; sponcor_links = []
+    game_paused = False; players_table_msg_id = None; sponsor_links = []
     await safe_reply(update.message, "⏹ Игра остановлена. Данные очищены.")
 
 async def bingo_command(update, context):
     global game_active, players, bingo_history, history_msg_id, progress_msg_id
-    global registration_open, current_winner, game_paused, sponcor_links
+    global registration_open, current_winner, game_paused, sponsor_links
 
     if not db.is_admin(update.effective_user.id):
         await safe_reply(update.message, "❌ Только админ.")
@@ -1409,21 +1465,27 @@ async def admin_callback_handler(update, context):
 
 async def admin_input_handler(update, context):
     global game_active, players, bingo_history, history_msg_id, progress_msg_id
-    global game_paused, players_table_msg_id, current_winner, sponcor_links
+    global game_paused, players_table_msg_id, current_winner, sponsor_links
     global registration_open
 
     if not db.is_admin(update.effective_user.id):
         return
 
+    if not update.message:
+        return
+
+    text = update.message.text or update.message.caption or ""
+    photo = update.message.photo[-1].file_id if update.message.photo else None
+
     # Подтверждение приза для победителя бинго
     if update.effective_user.id in admin_form_data:
         data = admin_form_data[update.effective_user.id]
         if not data['prize']:
-            data['prize'] = update.message.text
+            data['prize'] = text if text else "Приз"
             await safe_reply(update.message, "🎁 Приз сохранён. Теперь напишите поздравление (или '-' если без):")
             return
         else:
-            data['congrats'] = update.message.text
+            data['congrats'] = text if text else ""
             winner_uid = data['winner_id']
             winner_uname = data['winner_username']
             prize = data['prize']
@@ -1441,7 +1503,7 @@ async def admin_input_handler(update, context):
 
             game_active = False; players.clear(); bingo_history.clear()
             history_msg_id = None; progress_msg_id = None; game_paused = False
-            players_table_msg_id = None; current_winner = None; sponcor_links = []
+            players_table_msg_id = None; current_winner = None; sponsor_links = []
             await safe_reply(update.message, "✅ Победитель опубликован, игра завершена!")
             return
 
@@ -1449,15 +1511,15 @@ async def admin_input_handler(update, context):
     if context.user_data.get('setting_up_bingo'):
         step = context.user_data.get('admin_step', '')
         if step == 'wait_sponsor_name':
-            context.user_data['sponsor_name'] = update.message.text
+            context.user_data['sponsor_name'] = text
             context.user_data['admin_step'] = 'wait_sponsor_url'
             await safe_reply(update.message, "🔗 Введите ссылку на спонсора (https://t.me/... или @username):")
             return
         elif step == 'wait_sponsor_url':
             name = context.user_data.get('sponsor_name', 'Спонсор')
-            url = update.message.text.strip()
+            url = text.strip()
             chat_id = extract_chat_id(url)
-            sponcor_links.append({"text": name, "url": url, "chat_id": chat_id})
+            sponsor_links.append({"text": name, "url": url, "chat_id": chat_id})
             context.user_data.pop('admin_step', None)
             context.user_data.pop('setting_up_bingo', None)
             registration_open = True
@@ -1468,9 +1530,6 @@ async def admin_input_handler(update, context):
     # Остальные шаги админ-панели
     step = context.user_data.get('admin_step', '')
     if not step: return
-
-    text = update.message.text
-    photo = update.message.photo[-1].file_id if update.message.photo else None
 
     if step == 'wait_name':
         context.user_data['temp_name'] = text
@@ -1485,15 +1544,19 @@ async def admin_input_handler(update, context):
         context.user_data['admin_step'] = 'wait_photo'
         await safe_reply(update.message, "🖼️ Отправьте фото или /skip:")
     elif step == 'wait_photo':
-        photo = update.message.photo[-1].file_id if update.message.photo else None
-        if update.message.text and update.message.text == "/skip":
+        if text and text.lower() == "/skip":
             photo = None
-        if not photo and not (update.message.text and update.message.text == "/skip"):
-            await safe_reply(update.message, "❌ Отправьте фото или /skip.")
+        elif not photo:
+            await safe_reply(update.message, "❌ Отправьте фото или напишите /skip чтобы пропустить.")
             return
         table = context.user_data.get('admin_table', '')
         ok = db.add_item(table, context.user_data['temp_name'], context.user_data['temp_username'], context.user_data['temp_desc'], photo)
         await safe_reply(update.message, "✅ Добавлено!" if ok else "❌ Ошибка (возможно, дубль).")
+        context.user_data['admin_step'] = None
+    elif step == 'wait_info':
+        key = context.user_data.get('admin_info_key', '')
+        db.update_info(key, text or "", photo)
+        await safe_reply(update.message, "✅ Обновлено!")
         context.user_data['admin_step'] = None
     elif step == 'wait_menu_photo':
         if update.message.photo:
@@ -1718,13 +1781,15 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("skip", lambda u, c: safe_reply(u.message, "Нечего пропускать.")))
 
     app.add_handler(CallbackQueryHandler(setup_callback, pattern="^setup_"))
-    app.add_handler(CallbackQueryHandler(main_callback, pattern="^(main_menu|mode_|show_|info_|stat_|shop_|exch_|vpn_|job_|bingo_|admin_|confirm_del_|check_sponsor_|stat_page_)"))
+    app.add_handler(CallbackQueryHandler(main_callback, pattern="^(main_menu|mode_|show_|info_|stat_|shop_|exch_|vpn_|job_|bingo_|admin_|confirm_del_|check_sponsor_|stat_page_|open_menu)"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_bingo_numbers), group=0)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS, check_triggers), group=0)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_text), group=1)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, greeting), group=2)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, admin_input_handler), group=3)
+    app.add_handler(MessageHandler(~filters.COMMAND & filters.ChatType.PRIVATE, admin_input_handler), group=3)
+
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot_added_to_group))
 
     app.job_queue.run_daily(reset_daily_stats, time(0, 5, 0))
 
