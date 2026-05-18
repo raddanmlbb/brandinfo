@@ -1485,19 +1485,15 @@ async def admin_input_handler(update, context):
         context.user_data['admin_step'] = 'wait_photo'
         await safe_reply(update.message, "🖼️ Отправьте фото или /skip:")
     elif step == 'wait_photo':
-        if text and text == "/skip":
+        photo = update.message.photo[-1].file_id if update.message.photo else None
+        if update.message.text and update.message.text == "/skip":
             photo = None
-    elif not photo:
+        if not photo and not (update.message.text and update.message.text == "/skip"):
             await safe_reply(update.message, "❌ Отправьте фото или /skip.")
             return
         table = context.user_data.get('admin_table', '')
         ok = db.add_item(table, context.user_data['temp_name'], context.user_data['temp_username'], context.user_data['temp_desc'], photo)
         await safe_reply(update.message, "✅ Добавлено!" if ok else "❌ Ошибка (возможно, дубль).")
-        context.user_data['admin_step'] = None
-    elif step == 'wait_info':
-        key = context.user_data.get('admin_info_key', '')
-        db.update_info(key, text or "", photo)
-        await safe_reply(update.message, "✅ Обновлено!")
         context.user_data['admin_step'] = None
     elif step == 'wait_menu_photo':
         if update.message.photo:
