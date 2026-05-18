@@ -1207,7 +1207,7 @@ async def bingo_command(update, context):
     winners = [(uid, data["username"]) for uid, data in players.items() if len(data["found"]) == data["max_needed"]]
 
     if winners:
-        global current_winner, game_paused
+        global current_winner, 
         winner_uid, winner_uname = random.choice(winners)
         current_winner = {"user_id": winner_uid, "username": winner_uname}
         game_paused = True
