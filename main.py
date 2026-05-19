@@ -1845,9 +1845,9 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(setup_callback, pattern="^setup_"))
     app.add_handler(CallbackQueryHandler(main_callback, pattern="^(main_menu|mode_|show_|info_|stat_|shop_|exch_|vpn_|job_|bingo_|admin_|confirm_del_|check_sponsor_|stat_page_|open_menu)"))
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_bingo_numbers), group=0)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS, check_triggers), group=0)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_text), group=1)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_text), group=0)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_bingo_numbers), group=1)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, greeting), group=2)
     app.add_handler(MessageHandler(~filters.COMMAND & filters.ChatType.PRIVATE, admin_input_handler), group=3)
 
