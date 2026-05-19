@@ -1158,7 +1158,7 @@ async def handle_bingo_numbers(update, context):
                 msg = await safe_reply(update.message,
                     f"@{update.effective_user.username}, чтобы записаться — нажми ✍️ Записаться в меню Бинго 🎰")
                 asyncio.create_task(delete_message_after(msg, 7))
-        return False
+        return 
 
     uid = update.effective_user.id
     uname = update.effective_user.username or str(uid)
