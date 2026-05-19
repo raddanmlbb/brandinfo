@@ -13,7 +13,7 @@ from telegram.constants import ChatType
 # =====================================================================
 # КОНФИГУРАЦИЯ
 # =====================================================================
-BOT_TOKEN = "8643635341:AAG-H4T-Fe_LcjD4t9VAhwKLFt3bAG5P1rI"
+BOT_TOKEN = "8643635341:AAHLcxbOjtwgQgHS0KvrvMit5cuyu43ra4w"
 ADMIN_IDS = [7956317602, 5243173039]
 
 TRIGGER_WORDS = ["привет", "как ты", "салам"]
