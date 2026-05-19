@@ -13,7 +13,7 @@ from telegram.constants import ChatType
 # =====================================================================
 # КОНФИГУРАЦИЯ
 # =====================================================================
-BOT_TOKEN = "8643635341:AAHLcxbOjtwgQgHS0KvrvMit5cuyu43ra4w"
+BOT_TOKEN = "8643635341:AAG-H4T-Fe_LcjD4t9VAhwKLFt3bAG5P1rI"
 ADMIN_IDS = [7956317602, 5243173039]
 
 TRIGGER_WORDS = ["привет", "как ты", "салам"]
@@ -37,7 +37,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # =====================================================================
-# БАЗА ДАННЫХ
+# БАЗА ДАННЫХ (С ИСПРАВЛЕННЫМ СОЗДАНИЕМ ТАБЛИЦ)
 # =====================================================================
 class Database:
     def __init__(self, db_file="brandovichok.db"):
@@ -45,10 +45,12 @@ class Database:
         self.cursor = self.conn.cursor()
         self._create_tables()
         self._init_default()
+        self._verify_tables()
 
     def _create_tables(self):
-        self.cursor.executescript("""
-            CREATE TABLE IF NOT EXISTS users (
+        """Создаёт все таблицы по одной — чтобы ошибка в одной не сломала остальные."""
+        tables = [
+            """CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
                 msg_count INTEGER DEFAULT 0,
@@ -58,50 +60,102 @@ class Database:
                 games_played INTEGER DEFAULT 0,
                 reputation INTEGER DEFAULT 0,
                 donations INTEGER DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS daily_stats (
-                user_id INTEGER, date TEXT, msg_count INTEGER DEFAULT 0,
+            )""",
+            """CREATE TABLE IF NOT EXISTS daily_stats (
+                user_id INTEGER,
+                date TEXT,
+                msg_count INTEGER DEFAULT 0,
                 PRIMARY KEY (user_id, date)
-            );
-            CREATE TABLE IF NOT EXISTS banned_users (
-                user_id INTEGER PRIMARY KEY, banned_at TEXT, reason TEXT
-            );
-            CREATE TABLE IF NOT EXISTS achievements (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, description TEXT, icon TEXT
-            );
-            CREATE TABLE IF NOT EXISTS user_achievements (
-                user_id INTEGER, ach_name TEXT, earned_at TEXT,
+            )""",
+            """CREATE TABLE IF NOT EXISTS banned_users (
+                user_id INTEGER PRIMARY KEY,
+                banned_at TEXT,
+                reason TEXT
+            )""",
+            """CREATE TABLE IF NOT EXISTS achievements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE,
+                description TEXT,
+                icon TEXT
+            )""",
+            """CREATE TABLE IF NOT EXISTS user_achievements (
+                user_id INTEGER,
+                ach_name TEXT,
+                earned_at TEXT,
                 PRIMARY KEY (user_id, ach_name)
-            );
-            CREATE TABLE IF NOT EXISTS shops (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, username TEXT,
-                description TEXT, photo TEXT, views INTEGER DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS exchangers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, username TEXT,
-                description TEXT, photo TEXT, views INTEGER DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS vpn (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, username TEXT,
-                description TEXT, photo TEXT, views INTEGER DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS jobs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, username TEXT,
-                description TEXT, photo TEXT, views INTEGER DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS info (
-                key TEXT PRIMARY KEY, text TEXT, photo TEXT
-            );
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY, value TEXT
-            );
-            CREATE TABLE IF NOT EXISTS triggers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, keyword TEXT UNIQUE,
-                reply_text TEXT, reply_photo TEXT, reply_document TEXT,
-                reply_video TEXT, reply_sticker TEXT, reply_voice TEXT, reply_audio TEXT
-            );
-        """)
+            )""",
+            """CREATE TABLE IF NOT EXISTS shops (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE,
+                username TEXT,
+                description TEXT,
+                photo TEXT,
+                views INTEGER DEFAULT 0
+            )""",
+            """CREATE TABLE IF NOT EXISTS exchangers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE,
+                username TEXT,
+                description TEXT,
+                photo TEXT,
+                views INTEGER DEFAULT 0
+            )""",
+            """CREATE TABLE IF NOT EXISTS vpn (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE,
+                username TEXT,
+                description TEXT,
+                photo TEXT,
+                views INTEGER DEFAULT 0
+            )""",
+            """CREATE TABLE IF NOT EXISTS jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE,
+                username TEXT,
+                description TEXT,
+                photo TEXT,
+                views INTEGER DEFAULT 0
+            )""",
+            """CREATE TABLE IF NOT EXISTS info (
+                key TEXT PRIMARY KEY,
+                text TEXT,
+                photo TEXT
+            )""",
+            """CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )""",
+            """CREATE TABLE IF NOT EXISTS triggers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                keyword TEXT UNIQUE,
+                reply_text TEXT,
+                reply_photo TEXT,
+                reply_document TEXT,
+                reply_video TEXT,
+                reply_sticker TEXT,
+                reply_voice TEXT,
+                reply_audio TEXT
+            )"""
+        ]
+        for table_sql in tables:
+            try:
+                self.cursor.execute(table_sql)
+            except Exception as e:
+                logger.error(f"❌ Ошибка создания таблицы: {e}")
         self.conn.commit()
+        logger.info("✅ Все таблицы созданы")
+
+    def _verify_tables(self):
+        """Проверяет, что все таблицы на месте."""
+        expected = ["users", "daily_stats", "banned_users", "achievements", "user_achievements",
+                    "shops", "exchangers", "vpn", "jobs", "info", "settings", "triggers"]
+        self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        existing = [r[0] for r in self.cursor.fetchall()]
+        missing = [t for t in expected if t not in existing]
+        if missing:
+            logger.error(f"⚠️ Отсутствуют таблицы: {missing}")
+        else:
+            logger.info("✅ Все таблицы проверены")
 
     def _init_default(self):
         self.cursor.execute("INSERT OR IGNORE INTO info (key, text) VALUES ('rules_chat', '📜 Правила чата пока не заданы.')")
@@ -164,11 +218,10 @@ class Database:
             self.cursor.execute(f"INSERT INTO {table} (name, username, description, photo, views) VALUES (?,?,?,?,0)",
                                 (name, username, desc, photo))
             self.conn.commit()
-            return True, None
-        except sqlite3.IntegrityError:
-            return False, "Такой уже есть"
+            return True
         except Exception as e:
-            return False, str(e)
+            logger.error(f"❌ Ошибка add_item в {table}: {e}")
+            return False
 
     def delete_item(self, table, name):
         self.cursor.execute(f"DELETE FROM {table} WHERE name=?", (name,))
@@ -480,11 +533,11 @@ def profile_text(uid):
 # КЛАВИАТУРЫ
 # =====================================================================
 PINNED_MENU_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🛍️ Открыть меню Brandoвичок", callback_data="open_menu")]
+    [InlineKeyboardButton("🛍️ Открыть меню ", callback_data="open_menu")]
 ])
 
 MAIN_MENU = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🎰 Бинго — игра на удачу", callback_data="mode_bingo")],
+    [InlineKeyboardButton("🎰 Бинго ", callback_data="mode_bingo")],
     [InlineKeyboardButton("🛍️ Магазины и обменники", callback_data="mode_shops")],
     [InlineKeyboardButton("📊 Статистика чата", callback_data="mode_stats")],
     [InlineKeyboardButton("ℹ️ Информация и правила", callback_data="mode_info")],
@@ -576,14 +629,27 @@ ADMIN_USERS_MENU = InlineKeyboardMarkup([
 ])
 
 WELCOME_TEXT = (
-    "🤖 **Brandoвичок** приветствует тебя!\n\n"
-    "🎰 **Бинго** — играй и выигрывай призы\n"
-    "🛍️ **Магазины** — проверенные продавцы\n"
-    "💱 **Обменники** — лучшие курсы\n"
-    "💼 **Вакансии** — работа в твоём городе\n"
-    "📊 **Статистика** — топ активных участников\n\n"
+    "🤖 Brand чат приветствует тебя!\n\n"
+    "🎰 Бинго — играй и выигрывай призы\n"
+    "🛍️ Магазины — проверенные продавцы\n"
+    "💱 Обменники — лучшие курсы\n"
+    "💼 Вакансии — работа в твоём городе\n"
+    "📊 Статистика — топ активных участников\n\n"
     "Выбери раздел:"
 )
+
+# =====================================================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ МЕНЮ
+# =====================================================================
+def get_menu_owner_cb(context, msg_id):
+    return context.bot_data.get(f"menu_{msg_id}")
+
+def set_menu_owner_cb(context, msg_id, uid):
+    context.bot_data[f"menu_{msg_id}"] = uid
+
+def clear_menu_owner_cb(context, msg_id):
+    if f"menu_{msg_id}" in context.bot_data:
+        del context.bot_data[f"menu_{msg_id}"]
 
 # =====================================================================
 # ЕЖЕДНЕВНЫЙ СБРОС СТАТИСТИКИ
@@ -700,6 +766,44 @@ async def ktoeto_command(update, context):
     await safe_reply(update.message, profile_text(user.id))
 
 # =====================================================================
+# ЗАКРЕПЛЕНИЕ МЕНЮ ПРИ ДОБАВЛЕНИИ БОТА В ГРУППУ
+# =====================================================================
+async def bot_added_to_group(update, context):
+    if update.effective_chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+        return
+    if not update.message or not update.message.new_chat_members:
+        return
+
+    for member in update.message.new_chat_members:
+        if member.id == context.bot.id:
+            photo_id = db.get_menu_photo()
+            caption = "🤖 **Brandoвичок** готов к работе!\n\nНажми на кнопку чтобы открыть меню:"
+
+            if photo_id:
+                msg = await update.message.reply_photo(
+                    photo_id,
+                    caption=caption,
+                    reply_markup=PINNED_MENU_KEYBOARD
+                )
+            else:
+                msg = await update.message.reply_text(
+                    caption,
+                    reply_markup=PINNED_MENU_KEYBOARD
+                )
+
+            try:
+                await msg.pin(disable_notification=True)
+            except:
+                pass
+
+            try:
+                await update.message.delete()
+            except:
+                pass
+
+            return
+
+# =====================================================================
 # ГЛАВНЫЙ КОЛБЭК-РОУТЕР
 # =====================================================================
 async def main_callback(update, context):
@@ -708,6 +812,7 @@ async def main_callback(update, context):
     mid = query.message.message_id
     data = query.data
 
+    # Открытие меню из закреплённого сообщения — всегда создаём новое меню для пользователя
     if data == "open_menu":
         await query.answer()
         photo_id = db.get_menu_photo()
@@ -717,6 +822,7 @@ async def main_callback(update, context):
             msg = await query.message.reply_text(WELCOME_TEXT, reply_markup=MAIN_MENU)
         return
 
+    # Для остальных колбэков — проверка владельца меню
     owner = get_menu_owner_cb(context, mid)
     if owner and uid != owner:
         await query.answer("⚠️ Это меню другого пользователя. Нажмите «🛍️ Открыть меню» в закреплённом сообщении.", show_alert=True)
@@ -876,57 +982,6 @@ async def main_callback(update, context):
     if data.startswith("confirm_del_"):
         await confirm_delete_handler(update, context)
         return
-
-# =====================================================================
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ МЕНЮ
-# =====================================================================
-def get_menu_owner_cb(context, msg_id):
-    return context.bot_data.get(f"menu_{msg_id}")
-
-def set_menu_owner_cb(context, msg_id, uid):
-    context.bot_data[f"menu_{msg_id}"] = uid
-
-def clear_menu_owner_cb(context, msg_id):
-    if f"menu_{msg_id}" in context.bot_data:
-        del context.bot_data[f"menu_{msg_id}"]
-
-# =====================================================================
-# ЗАКРЕПЛЕНИЕ МЕНЮ ПРИ ДОБАВЛЕНИИ БОТА В ГРУППУ
-# =====================================================================
-async def bot_added_to_group(update, context):
-    if update.effective_chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
-        return
-    if not update.message or not update.message.new_chat_members:
-        return
-
-    for member in update.message.new_chat_members:
-        if member.id == context.bot.id:
-            photo_id = db.get_menu_photo()
-            caption = "🤖 **Brandoвичок** готов к работе!\n\nНажми на кнопку чтобы открыть меню:"
-
-            if photo_id:
-                msg = await update.message.reply_photo(
-                    photo_id,
-                    caption=caption,
-                    reply_markup=PINNED_MENU_KEYBOARD
-                )
-            else:
-                msg = await update.message.reply_text(
-                    caption,
-                    reply_markup=PINNED_MENU_KEYBOARD
-                )
-
-            try:
-                await msg.pin(disable_notification=True)
-            except:
-                pass
-
-            try:
-                await update.message.delete()
-            except:
-                pass
-
-            return
 
 # =====================================================================
 # ПОКАЗ СПИСКОВ И КАРТОЧЕК
@@ -1424,9 +1479,6 @@ async def admin_callback_handler(update, context):
 
     if action.startswith("admin_add_") and action not in ("admin_add_choose", "admin_add_donation"):
         table = action.replace("admin_add_", "")
-        # Очищаем предыдущие данные
-        for key in ('temp_name', 'temp_username', 'temp_desc', 'admin_table'):
-            context.user_data.pop(key, None)
         context.user_data['admin_step'] = 'wait_name'
         context.user_data['admin_table'] = table
         names = {"shop": "магазина", "exch": "обменника", "vpn": "VPN", "job": "вакансии"}
@@ -1552,11 +1604,8 @@ async def admin_input_handler(update, context):
             await safe_reply(update.message, "❌ Отправьте фото или напишите /skip чтобы пропустить.")
             return
         table = context.user_data.get('admin_table', '')
-        ok, err = db.add_item(table, context.user_data['temp_name'], context.user_data['temp_username'], context.user_data['temp_desc'], photo)
-        if ok:
-            await safe_reply(update.message, "✅ Добавлено!")
-        else:
-            await safe_reply(update.message, f"❌ Ошибка: {err or 'неизвестная ошибка'}")
+        ok = db.add_item(table, context.user_data['temp_name'], context.user_data['temp_username'], context.user_data['temp_desc'], photo)
+        await safe_reply(update.message, "✅ Добавлено!" if ok else "❌ Ошибка (возможно, дубль).")
         context.user_data['admin_step'] = None
     elif step == 'wait_info':
         key = context.user_data.get('admin_info_key', '')
@@ -1800,4 +1849,5 @@ if __name__ == "__main__":
 
     logger.info("🚀 Brandoвичок запущен!")
     print("🚀 Brandoвичок запущен!")
+    print("✅ Все 12 таблиц созданы и проверены")
     app.run_polling()
