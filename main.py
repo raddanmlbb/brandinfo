@@ -42,7 +42,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # =====================================================================
-# БАЗА ДАННЫХ (С ИСПРАВЛЕННЫМ СОЗДАНИЕМ ТАБЛИЦ)
+# БАЗА ДАННЫХ
 # =====================================================================
 class Database:
     def __init__(self, db_file="brandovichok.db"):
@@ -53,94 +53,39 @@ class Database:
         self._verify_tables()
 
     def _create_tables(self):
-        """Создаёт все таблицы по одной — чтобы ошибка в одной не сломала остальные."""
         tables = [
             """CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                username TEXT,
-                msg_count INTEGER DEFAULT 0,
-                first_seen TEXT,
-                vip INTEGER DEFAULT 0,
-                wins INTEGER DEFAULT 0,
-                games_played INTEGER DEFAULT 0,
-                reputation INTEGER DEFAULT 0,
-                donations INTEGER DEFAULT 0
-            )""",
+                user_id INTEGER PRIMARY KEY, username TEXT, msg_count INTEGER DEFAULT 0,
+                first_seen TEXT, vip INTEGER DEFAULT 0, wins INTEGER DEFAULT 0,
+                games_played INTEGER DEFAULT 0, reputation INTEGER DEFAULT 0, donations INTEGER DEFAULT 0)""",
             """CREATE TABLE IF NOT EXISTS daily_stats (
-                user_id INTEGER,
-                date TEXT,
-                msg_count INTEGER DEFAULT 0,
-                PRIMARY KEY (user_id, date)
-            )""",
+                user_id INTEGER, date TEXT, msg_count INTEGER DEFAULT 0, PRIMARY KEY (user_id, date))""",
             """CREATE TABLE IF NOT EXISTS banned_users (
-                user_id INTEGER PRIMARY KEY,
-                banned_at TEXT,
-                reason TEXT
-            )""",
+                user_id INTEGER PRIMARY KEY, banned_at TEXT, reason TEXT)""",
             """CREATE TABLE IF NOT EXISTS achievements (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                description TEXT,
-                icon TEXT
-            )""",
+                id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, description TEXT, icon TEXT)""",
             """CREATE TABLE IF NOT EXISTS user_achievements (
-                user_id INTEGER,
-                ach_name TEXT,
-                earned_at TEXT,
-                PRIMARY KEY (user_id, ach_name)
-            )""",
+                user_id INTEGER, ach_name TEXT, earned_at TEXT, PRIMARY KEY (user_id, ach_name))""",
             """CREATE TABLE IF NOT EXISTS shops (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                username TEXT,
-                description TEXT,
-                photo TEXT,
-                views INTEGER DEFAULT 0
-            )""",
+                id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, username TEXT,
+                description TEXT, photo TEXT, views INTEGER DEFAULT 0)""",
             """CREATE TABLE IF NOT EXISTS exchangers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                username TEXT,
-                description TEXT,
-                photo TEXT,
-                views INTEGER DEFAULT 0
-            )""",
+                id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, username TEXT,
+                description TEXT, photo TEXT, views INTEGER DEFAULT 0)""",
             """CREATE TABLE IF NOT EXISTS vpn (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                username TEXT,
-                description TEXT,
-                photo TEXT,
-                views INTEGER DEFAULT 0
-            )""",
+                id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, username TEXT,
+                description TEXT, photo TEXT, views INTEGER DEFAULT 0)""",
             """CREATE TABLE IF NOT EXISTS jobs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                username TEXT,
-                description TEXT,
-                photo TEXT,
-                views INTEGER DEFAULT 0
-            )""",
+                id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, username TEXT,
+                description TEXT, photo TEXT, views INTEGER DEFAULT 0)""",
             """CREATE TABLE IF NOT EXISTS info (
-                key TEXT PRIMARY KEY,
-                text TEXT,
-                photo TEXT
-            )""",
+                key TEXT PRIMARY KEY, text TEXT, photo TEXT)""",
             """CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            )""",
+                key TEXT PRIMARY KEY, value TEXT)""",
             """CREATE TABLE IF NOT EXISTS triggers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                keyword TEXT UNIQUE,
-                reply_text TEXT,
-                reply_photo TEXT,
-                reply_document TEXT,
-                reply_video TEXT,
-                reply_sticker TEXT,
-                reply_voice TEXT,
-                reply_audio TEXT
-            )"""
+                id INTEGER PRIMARY KEY AUTOINCREMENT, keyword TEXT UNIQUE,
+                reply_text TEXT, reply_photo TEXT, reply_document TEXT,
+                reply_video TEXT, reply_sticker TEXT, reply_voice TEXT, reply_audio TEXT)"""
         ]
         for table_sql in tables:
             try:
@@ -151,7 +96,6 @@ class Database:
         logger.info("✅ Все таблицы созданы")
 
     def _verify_tables(self):
-        """Проверяет, что все таблицы на месте."""
         expected = ["users", "daily_stats", "banned_users", "achievements", "user_achievements",
                     "shops", "exchangers", "vpn", "jobs", "info", "settings", "triggers"]
         self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -403,21 +347,16 @@ class AntiFlood:
         now = datetime.now()
         if uid in ADMIN_IDS: return True, None
         if self.is_blocked(uid): return False, f"🚫 Заблокированы. Осталось: {self.get_ban_time(uid)} сек"
-
         self.actions[uid] = [(ts, act) for ts, act in self.actions[uid] if (now - ts).total_seconds() < self.ACTION_WINDOW]
-
         if atype == "register":
             last = [ts for ts, act in self.actions[uid] if act == "register" and (now - ts).total_seconds() < self.REGISTER_COOLDOWN]
             if last: return False, f"⏳ Подождите {self.REGISTER_COOLDOWN - int((now-last[0]).total_seconds())} сек"
-
         if atype == "bingo":
             last = [ts for ts, act in self.actions[uid] if act == "bingo" and (now - ts).total_seconds() < self.BINGO_COOLDOWN]
             if last: return False, f"⏳ Подождите {self.BINGO_COOLDOWN - int((now-last[0]).total_seconds())} сек"
-
         if len(self.actions[uid]) >= self.MAX_ACTIONS:
             self.add_warning(uid)
             return False, f"⚠️ Флуд! Предупреждение {self.warnings[uid]['warnings']}/5"
-
         self.actions[uid].append((now, atype))
         return True, None
 
@@ -560,12 +499,10 @@ def bingo_menu():
     else:
         kb.append([InlineKeyboardButton("📜 Правила бинго", callback_data="info_rules_bingo")])
     kb.append([InlineKeyboardButton("◀️ В главное меню", callback_data="main_menu")])
-
     status = ""
     if registration_open: status = "🟢 **Регистрация открыта!**\n\n"
     elif game_active: status = "🔴 **Игра идёт**\n\n"
     else: status = "⚪ **Нет активной игры**\n\n"
-
     return InlineKeyboardMarkup(kb), status
 
 SHOPS_MENU = InlineKeyboardMarkup([
@@ -694,18 +631,17 @@ async def start(update, context):
         context.bot_data["group_chats"].add(update.effective_chat.id)
         photo_id = db.get_menu_photo()
         if photo_id:
-            msg = await safe_send(context.bot, update.effective_chat.id, WELCOME_TEXT, reply_markup=MAIN_MENU)
+            await safe_send(context.bot, update.effective_chat.id, WELCOME_TEXT, reply_markup=MAIN_MENU)
         else:
-            msg = await update.message.reply_text(WELCOME_TEXT, reply_markup=MAIN_MENU)
+            await update.message.reply_text(WELCOME_TEXT, reply_markup=MAIN_MENU)
 
 async def brand_command(update, context):
     if update.effective_chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]: return
-    uid = update.effective_user.id
     photo_id = db.get_menu_photo()
     if photo_id:
-        msg = await update.message.reply_photo(photo_id, caption=WELCOME_TEXT, reply_markup=MAIN_MENU)
+        await update.message.reply_photo(photo_id, caption=WELCOME_TEXT, reply_markup=MAIN_MENU)
     else:
-        msg = await update.message.reply_text(WELCOME_TEXT, reply_markup=MAIN_MENU)
+        await update.message.reply_text(WELCOME_TEXT, reply_markup=MAIN_MENU)
 
 async def stat_command(update, context):
     page = context.user_data.get('stat_page', 0)
@@ -774,42 +710,24 @@ async def ktoeto_command(update, context):
 # ЗАКРЕПЛЕНИЕ МЕНЮ ПРИ ДОБАВЛЕНИИ БОТА В ГРУППУ
 # =====================================================================
 async def bot_added_to_group(update, context):
-    if update.effective_chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
-        return
-    if not update.message or not update.message.new_chat_members:
-        return
-
+    if update.effective_chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]: return
+    if not update.message or not update.message.new_chat_members: return
     for member in update.message.new_chat_members:
         if member.id == context.bot.id:
             photo_id = db.get_menu_photo()
             caption = "🤖 **Brandoвичок** готов к работе!\n\nНажми на кнопку чтобы открыть меню:"
-
             if photo_id:
-                msg = await update.message.reply_photo(
-                    photo_id,
-                    caption=caption,
-                    reply_markup=PINNED_MENU_KEYBOARD
-                )
+                msg = await update.message.reply_photo(photo_id, caption=caption, reply_markup=PINNED_MENU_KEYBOARD)
             else:
-                msg = await update.message.reply_text(
-                    caption,
-                    reply_markup=PINNED_MENU_KEYBOARD
-                )
-
-            try:
-                await msg.pin(disable_notification=True)
-            except:
-                pass
-
-            try:
-                await update.message.delete()
-            except:
-                pass
-
+                msg = await update.message.reply_text(caption, reply_markup=PINNED_MENU_KEYBOARD)
+            try: await msg.pin(disable_notification=True)
+            except: pass
+            try: await update.message.delete()
+            except: pass
             return
 
 # =====================================================================
-# ГЛАВНЫЙ КОЛБЭК-РОУТЕР
+# ГЛАВНЫЙ КОЛБЭК-РОУТЕР (ВСЕ КОЛБЭКИ ИДУТ СЮДА)
 # =====================================================================
 async def main_callback(update, context):
     query = update.callback_query
@@ -822,9 +740,9 @@ async def main_callback(update, context):
         await query.answer()
         photo_id = db.get_menu_photo()
         if photo_id:
-            msg = await safe_send(context.bot, query.message.chat_id, WELCOME_TEXT, reply_markup=MAIN_MENU)
+            await safe_send(context.bot, query.message.chat_id, WELCOME_TEXT, reply_markup=MAIN_MENU)
         else:
-            msg = await query.message.reply_text(WELCOME_TEXT, reply_markup=MAIN_MENU)
+            await query.message.reply_text(WELCOME_TEXT, reply_markup=MAIN_MENU)
         return
 
     # Проверка владельца меню
@@ -835,6 +753,7 @@ async def main_callback(update, context):
 
     await query.answer()
 
+    # --- Навигация ---
     if data == "main_menu":
         clear_menu_owner_cb(context, mid)
         photo_id = db.get_menu_photo()
@@ -867,126 +786,93 @@ async def main_callback(update, context):
         set_menu_owner_cb(context, mid, uid)
         return
 
-    # --- Бинго колбэки ---
+    # --- Бинго ---
     if data == "bingo_register":
-        await bingo_register_handler(update, context)
-        return
+        await bingo_register_handler(update, context); return
     if data == "bingo_my_combo":
-        await bingo_my_combo_handler(update, context)
-        return
+        await bingo_my_combo_handler(update, context); return
     if data == "bingo_players":
-        await bingo_players_handler(update, context)
-        return
+        await bingo_players_handler(update, context); return
     if data == "bingo_progress":
-        await bingo_progress_handler(update, context)
-        return
+        await bingo_progress_handler(update, context); return
 
     # --- Статистика ---
     if data == "stat_global":
-        await stat_global_callback(update, context)
-        return
+        await stat_global_callback(update, context); return
     if data == "stat_today":
-        await stat_today_callback(update, context)
-        return
+        await stat_today_callback(update, context); return
     if data == "stat_profile":
-        await query.message.edit_text(profile_text(uid))
-        return
+        await query.message.edit_text(profile_text(uid)); return
     if data == "stat_achievements":
-        await stat_achievements_callback(update, context)
-        return
+        await stat_achievements_callback(update, context); return
     if data.startswith("stat_page_"):
         page = int(data.split("_")[-1])
         context.user_data['stat_page'] = page
-        await stat_global_callback(update, context)
-        return
+        await stat_global_callback(update, context); return
 
     # --- Инфо ---
     if data == "info_rules_chat":
         text, _ = db.get_info('rules_chat')
         await query.message.edit_text(f"📜 **ПРАВИЛА ЧАТА**\n\n{text}", reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("◀️ Назад", callback_data="mode_info")]
-        ]))
-        return
+            [InlineKeyboardButton("◀️ Назад", callback_data="mode_info")]])); return
     if data == "info_rules_bingo":
         text, _ = db.get_info('rules_bingo')
         await query.message.edit_text(f"🎲 **ПРАВИЛА БИНГО**\n\n{text}", reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("◀️ Назад", callback_data="mode_bingo")]
-        ]))
-        return
+            [InlineKeyboardButton("◀️ Назад", callback_data="mode_bingo")]])); return
     if data == "info_links":
         text, _ = db.get_info('links')
         await query.message.edit_text(f"🔗 **ПОЛЕЗНЫЕ ССЫЛКИ**\n\n{text}", reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("◀️ Назад", callback_data="mode_info")]
-        ]))
-        return
+            [InlineKeyboardButton("◀️ Назад", callback_data="mode_info")]])); return
     if data == "show_vpn":
-        await show_items_list(update, context, "vpn", "VPN", "mode_info", "vpn")
-        return
+        await show_items_list(update, context, "vpn", "VPN", "mode_info", "vpn"); return
 
     # --- Магазины ---
     if data == "show_shops":
-        await show_items_list(update, context, "shops", "магазинов", "mode_shops", "shop")
-        return
+        await show_items_list(update, context, "shops", "магазинов", "mode_shops", "shop"); return
     if data == "show_exch":
-        await show_items_list(update, context, "exchangers", "обменников", "mode_shops", "exch")
-        return
+        await show_items_list(update, context, "exchangers", "обменников", "mode_shops", "exch"); return
     if data == "show_jobs":
-        await show_items_list(update, context, "jobs", "вакансий", "mode_shops", "job")
-        return
+        await show_items_list(update, context, "jobs", "вакансий", "mode_shops", "job"); return
     if data == "show_popular":
-        await show_popular_handler(update, context)
-        return
+        await show_popular_handler(update, context); return
 
     # --- Карточки ---
     if data.startswith("shop_"):
-        await show_item_card(update, context, "shops", "Магазин", "show_shops", data[5:], "shop")
-        return
+        await show_item_card(update, context, "shops", "Магазин", "show_shops", data[5:], "shop"); return
     if data.startswith("exch_"):
-        await show_item_card(update, context, "exchangers", "Обменник", "show_exch", data[5:], "exch")
-        return
+        await show_item_card(update, context, "exchangers", "Обменник", "show_exch", data[5:], "exch"); return
     if data.startswith("vpn_"):
-        await show_item_card(update, context, "vpn", "VPN", "show_vpn", data[4:], "vpn")
-        return
+        await show_item_card(update, context, "vpn", "VPN", "show_vpn", data[4:], "vpn"); return
     if data.startswith("job_"):
-        await show_item_card(update, context, "jobs", "Вакансия", "show_jobs", data[4:], "job")
-        return
+        await show_item_card(update, context, "jobs", "Вакансия", "show_jobs", data[4:], "job"); return
 
     # --- Спонсоры ---
     if data.startswith("check_sponsor_"):
-        await check_sponsor_subscription(update, context)
-        return
+        await check_sponsor_subscription(update, context); return
 
     # --- Админка ---
     if data == "admin_menu":
-        await query.message.edit_text("🔧 **АДМИН-ПАНЕЛЬ BRANDOВИЧКА**\nВыберите раздел:", reply_markup=ADMIN_MENU)
-        return
+        await query.message.edit_text("🔧 **АДМИН-ПАНЕЛЬ BRANDOВИЧКА**\nВыберите раздел:", reply_markup=ADMIN_MENU); return
     if data == "admin_cards":
-        await query.message.edit_text("🛍️ **Управление карточками**\nВыберите действие:", reply_markup=ADMIN_CARDS_MENU)
-        return
+        await query.message.edit_text("🛍️ **Управление карточками**\nВыберите действие:", reply_markup=ADMIN_CARDS_MENU); return
     if data == "admin_add_choose":
-        await query.message.edit_text("➕ **Добавление**\nВыберите тип:", reply_markup=card_type_keyboard("add"))
-        return
+        await query.message.edit_text("➕ **Добавление**\nВыберите тип:", reply_markup=card_type_keyboard("add")); return
     if data == "admin_del_choose":
-        await query.message.edit_text("➖ **Удаление**\nВыберите тип:", reply_markup=card_type_keyboard("del"))
-        return
+        await query.message.edit_text("➖ **Удаление**\nВыберите тип:", reply_markup=card_type_keyboard("del")); return
     if data == "admin_info":
-        await query.message.edit_text("📝 **Редактирование информации**\nВыберите:", reply_markup=ADMIN_INFO_MENU)
-        return
+        await query.message.edit_text("📝 **Редактирование информации**\nВыберите:", reply_markup=ADMIN_INFO_MENU); return
     if data == "admin_users":
-        await query.message.edit_text("👑 **Управление пользователями**\nВыберите действие:", reply_markup=ADMIN_USERS_MENU)
-        return
+        await query.message.edit_text("👑 **Управление пользователями**\nВыберите действие:", reply_markup=ADMIN_USERS_MENU); return
 
     if (data.startswith("admin_add_") or data.startswith("admin_edit_") or
         data.startswith("admin_give_") or data.startswith("admin_set_") or
         data.startswith("admin_ban_") or data.startswith("admin_unban_") or
         data.startswith("admin_reset_") or data == "admin_set_menu_photo" or
         data == "admin_start_bingo" or data == "admin_list_triggers"):
-        await admin_callback_handler(update, context)
-        return
+        await admin_callback_handler(update, context); return
 
     if data.startswith("confirm_del_"):
-        await confirm_delete_handler(update, context)
-        return
+        await confirm_delete_handler(update, context); return
 
 # =====================================================================
 # ПОКАЗ СПИСКОВ И КАРТОЧЕК
@@ -1041,8 +927,7 @@ async def show_popular_handler(update, context):
         for n, u, v in pop_exch: text += f"• {n} (@{u}) — {v}👁️\n"
     if not pop_shops and not pop_exch: text += "Пока ничего нет."
     await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("◀️ Назад", callback_data="mode_shops")]
-    ]))
+        [InlineKeyboardButton("◀️ Назад", callback_data="mode_shops")]]))
 
 # =====================================================================
 # БИНГО КОЛБЭКИ
@@ -1051,25 +936,18 @@ async def bingo_register_handler(update, context):
     query = update.callback_query
     uid = query.from_user.id
     uname = query.from_user.username or str(uid)
-
     if uid in players:
-        await query.answer("⚠️ Вы уже в игре!", show_alert=True)
-        return
+        await query.answer("⚠️ Вы уже в игре!", show_alert=True); return
     if not registration_open:
-        await query.answer("🔒 Регистрация сейчас закрыта.", show_alert=True)
-        return
+        await query.answer("🔒 Регистрация сейчас закрыта.", show_alert=True); return
     if db.is_banned(uid):
-        await query.answer("🚫 Вы заблокированы!", show_alert=True)
-        return
-
+        await query.answer("🚫 Вы заблокированы!", show_alert=True); return
     can, err = antiflood.check_action(uid, "register")
     if not can:
-        await query.answer(err, show_alert=True)
-        return
-
-    if sponcor_links:
+        await query.answer(err, show_alert=True); return
+    if sponsor_links:
         not_sub = []
-        for s in sponcor_links:
+        for s in sponsor_links:
             try:
                 m = await context.bot.get_chat_member(s['chat_id'], uid)
                 if m.status in ['left', 'kicked']: not_sub.append(s)
@@ -1079,20 +957,17 @@ async def bingo_register_handler(update, context):
             kb.append([InlineKeyboardButton("✅ Проверить подписки", callback_data=f"check_sponsor_{uid}")])
             await query.message.edit_text("⚠️ Для участия подпишитесь на спонсоров:", reply_markup=InlineKeyboardMarkup(kb))
             return
-
     await start_number_input(query, uid, uname, context)
 
 async def check_sponsor_subscription(update, context):
     query = update.callback_query
     uid = query.from_user.id
-
     not_sub = []
-    for s in sponcor_links:
+    for s in sponsor_links:
         try:
             m = await context.bot.get_chat_member(s['chat_id'], uid)
             if m.status in ['left', 'kicked']: not_sub.append(s)
         except: pass
-
     if not_sub:
         kb = [[InlineKeyboardButton(s['text'], url=s['url'])] for s in not_sub]
         kb.append([InlineKeyboardButton("✅ Проверить подписки", callback_data=f"check_sponsor_{uid}")])
@@ -1108,7 +983,6 @@ async def start_number_input(query, uid, uname, context):
     else:
         text = f"@{uname}\n🎯 Введи 6 чисел от 1 до 100 через пробел.\nПример: 7 15 32 68 91 42"
         context.user_data['awaiting_numbers'] = 'normal'
-
     await safe_send(query.message.chat.bot, query.message.chat_id, text)
 
 async def bingo_my_combo_handler(update, context):
@@ -1126,8 +1000,7 @@ async def bingo_my_combo_handler(update, context):
 async def bingo_players_handler(update, context):
     query = update.callback_query
     if not players:
-        await query.answer("📭 Нет участников.", show_alert=True)
-        return
+        await query.answer("📭 Нет участников.", show_alert=True); return
     msg = "📋 **Участники:**\n\n"
     for uid, p in players.items():
         wins, _, vip, rep = db.get_stats(uid)
@@ -1137,8 +1010,7 @@ async def bingo_players_handler(update, context):
 async def bingo_progress_handler(update, context):
     query = update.callback_query
     if not players:
-        await query.answer("📭 Нет участников.", show_alert=True)
-        return
+        await query.answer("📭 Нет участников.", show_alert=True); return
     lines = []
     for uid, p in players.items():
         rep = db.get_reputation(uid)
@@ -1158,21 +1030,18 @@ async def handle_bingo_numbers(update, context):
                 msg = await safe_reply(update.message,
                     f"@{update.effective_user.username}, чтобы записаться — нажми ✍️ Записаться в меню Бинго 🎰")
                 asyncio.create_task(delete_message_after(msg, 7))
-        return 
-
+        return
     uid = update.effective_user.id
     uname = update.effective_user.username or str(uid)
     mode = context.user_data.pop('awaiting_numbers')
     text = update.message.text.strip()
     parts = text.split()
     needed = 5 if mode == 'vip' else 6
-
     if len(parts) != needed:
         msg = await safe_reply(update.message, f"❌ @{uname}, нужно ровно {needed} чисел!")
         asyncio.create_task(delete_message_after(msg, 7))
         context.user_data['awaiting_numbers'] = mode
         return
-
     try:
         nums = [int(x) for x in parts]
         if len(set(nums)) != needed or min(nums) < 1 or max(nums) > 100:
@@ -1182,13 +1051,10 @@ async def handle_bingo_numbers(update, context):
         asyncio.create_task(delete_message_after(msg, 7))
         context.user_data['awaiting_numbers'] = mode
         return
-
     players[uid] = {"numbers": nums, "found": set(), "username": uname, "max_needed": needed}
     last_activity[uid] = datetime.now()
-
     msg = await safe_reply(update.message, f"✅ @{uname}, ты в игре!\nТвои числа: {', '.join(map(str, nums))}")
     asyncio.create_task(delete_message_after(msg, 10))
-
     chat_id = context.bot_data.get('game_chat_id')
     if chat_id:
         await update_players_table(context, chat_id)
@@ -1219,8 +1085,7 @@ async def update_players_table(context, chat_id):
 # =====================================================================
 async def setup_game_ls(update, context):
     if not db.is_admin(update.effective_user.id):
-        await safe_reply(update.message, "❌ Только админ.")
-        return
+        await safe_reply(update.message, "❌ Только админ."); return
     context.user_data['setting_up_bingo'] = True
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Без спонсоров", callback_data="setup_no_sponsor")],
@@ -1231,20 +1096,16 @@ async def setup_game_ls(update, context):
 async def setup_callback(update, context):
     query = update.callback_query
     if not db.is_admin(query.from_user.id):
-        await query.answer("❌ Только админ.", show_alert=True)
-        return
+        await query.answer("❌ Только админ.", show_alert=True); return
     await query.answer()
-
-    global registration_open, sponcor_links
-
+    global registration_open, sponsor_links
     if query.data == "setup_no_sponsor":
-        sponcor_links = []
+        sponsor_links = []
         registration_open = True
         await query.message.edit_text("✅ Регистрация открыта! Без спонсоров.\n\nВ группе появится уведомление.")
         await notify_group_registration(context)
-
     elif query.data == "setup_add_sponsor":
-        sponcor_links = []
+        sponsor_links = []
         context.user_data['admin_step'] = 'wait_sponsor_name'
         await query.message.edit_text("🔗 **Шаг 1/2**\nВведите название кнопки спонсора:")
 
@@ -1266,12 +1127,10 @@ async def notify_group_registration(context):
 
 async def startgame_command(update, context):
     if not db.is_admin(update.effective_user.id):
-        await safe_reply(update.message, "❌ Только админ.")
-        return
+        await safe_reply(update.message, "❌ Только админ."); return
     global game_active, registration_open, last_activity
     if not players:
-        await safe_reply(update.message, "Нет участников. Сначала откройте регистрацию: /startgame в ЛС.")
-        return
+        await safe_reply(update.message, "Нет участников. Сначала откройте регистрацию: /startgame в ЛС."); return
     registration_open = False
     game_active = True
     last_activity = {uid: datetime.now() for uid in players}
@@ -1280,76 +1139,47 @@ async def startgame_command(update, context):
 
 async def stopgame_command(update, context):
     global game_active, players, bingo_history, history_msg_id, progress_msg_id
-    global registration_open, current_winner, game_paused, players_table_msg_id, sponcor_links
-
+    global registration_open, current_winner, game_paused, players_table_msg_id, sponsor_links
     if not db.is_admin(update.effective_user.id):
-        await safe_reply(update.message, "❌ Только админ.")
-        return
-
+        await safe_reply(update.message, "❌ Только админ."); return
     game_active = False; players.clear(); bingo_history.clear(); history_msg_id = None
     progress_msg_id = None; registration_open = False; current_winner = None
-    game_paused = False; players_table_msg_id = None; sponcor_links = []
+    game_paused = False; players_table_msg_id = None; sponsor_links = []
     await safe_reply(update.message, "⏹ Игра остановлена. Данные очищены.")
 
 async def bingo_command(update, context):
     global game_active, players, bingo_history, history_msg_id, progress_msg_id
-    global registration_open, current_winner, game_paused, sponcor_links
-
+    global registration_open, current_winner, game_paused, sponsor_links
     if not db.is_admin(update.effective_user.id):
-        await safe_reply(update.message, "❌ Только админ.")
-        return
+        await safe_reply(update.message, "❌ Только админ."); return
     can, err = antiflood.check_action(update.effective_user.id, "bingo")
-    if not can:
-        await safe_reply(update.message, err)
-        return
-    if not game_active:
-        await safe_reply(update.message, "Игра не активна.")
-        return
-    if game_paused:
-        await safe_reply(update.message, "⏸ Игра на паузе. Сначала подтвердите победителя.")
-        return
-    if not players:
-        await safe_reply(update.message, "Нет участников.")
-        return
-
-    if registration_open:
-        registration_open = False
-
+    if not can: await safe_reply(update.message, err); return
+    if not game_active: await safe_reply(update.message, "Игра не активна."); return
+    if game_paused: await safe_reply(update.message, "⏸ Игра на паузе."); return
+    if not players: await safe_reply(update.message, "Нет участников."); return
+    if registration_open: registration_open = False
     count = get_random_count()
     numbers = [random.randint(1, 100) for _ in range(count)]
     numbers_str = ", ".join(str(n) for n in numbers)
     await safe_reply(update.message, f"🎲 Выпало: {numbers_str}")
     bingo_history.append(f"🎲 {numbers_str}")
-
     for num in numbers:
         for uid, data in players.items():
             if num in data["numbers"] and num not in data["found"]:
                 data["found"].add(num)
-
     winners = [(uid, data["username"]) for uid, data in players.items() if len(data["found"]) == data["max_needed"]]
-
     if winners:
         winner_uid, winner_uname = random.choice(winners)
         current_winner = {"user_id": winner_uid, "username": winner_uname}
         game_paused = True
         await safe_reply(update.message, f"🏆 **Победитель: @{winner_uname}!**\nАдмин назначает приз в ЛС.")
-
         for aid in ADMIN_IDS:
             try:
-                await context.bot.send_message(aid,
-                    f"🎁 **Назначьте приз для @{winner_uname}!**\n\n"
-                    f"Просто напишите название приза сюда:")
-                admin_form_data[aid] = {
-                    "winner_id": winner_uid,
-                    "winner_username": winner_uname,
-                    "prize": "",
-                    "congrats": "",
-                    "chat_id": update.effective_chat.id
-                }
+                await context.bot.send_message(aid, f"🎁 **Назначьте приз для @{winner_uname}!**\n\nПросто напишите название приза сюда:")
+                admin_form_data[aid] = {"winner_id": winner_uid, "winner_username": winner_uname, "prize": "", "congrats": "", "chat_id": update.effective_chat.id}
             except: pass
     else:
         await update_progress_table(update, context)
-
     history = bingo_history[-30:]
     text = "🎰 История:\n" + "\n".join(history)
     if history_msg_id:
@@ -1385,8 +1215,7 @@ async def stat_global_callback(update, context):
     offset = page * users_per_page
     users = db.get_global_top_users(users_per_page, offset)
     if not users:
-        await query.answer("📭 Пока нет данных.", show_alert=True)
-        return
+        await query.answer("📭 Пока нет данных.", show_alert=True); return
     text = f"📊 **Топ активных** (стр. {page+1})\n\n"
     for i, (uname, cnt, vip) in enumerate(users, start=offset+1):
         vip_icon = "👑" if vip else ""
@@ -1404,8 +1233,7 @@ async def stat_today_callback(update, context):
     top = db.get_daily_top_users(today, 3)
     medals = ["🥇","🥈","🥉"]
     if not top:
-        await query.answer("📭 Пока нет данных за сегодня.", show_alert=True)
-        return
+        await query.answer("📭 Пока нет данных за сегодня.", show_alert=True); return
     text = "🏆 **Топ за сегодня**\n\n"
     for i, (uname, cnt, vip) in enumerate(top):
         vip_icon = "👑" if vip else ""
@@ -1428,23 +1256,20 @@ async def stat_achievements_callback(update, context):
 # =====================================================================
 async def admin_panel(update, context):
     if not db.is_admin(update.effective_user.id):
-        await safe_reply(update.message, "❌ Только админ.")
-        return
+        await safe_reply(update.message, "❌ Только админ."); return
     context.user_data.clear()
     await safe_reply(update.message, "🔧 **АДМИН-ПАНЕЛЬ BRANDOВИЧКА**\nВыберите раздел:", reply_markup=ADMIN_MENU)
 
 async def admin_callback_handler(update, context):
     query = update.callback_query
     if not db.is_admin(query.from_user.id):
-        await query.answer("❌ Только админ.", show_alert=True)
-        return
+        await query.answer("❌ Только админ.", show_alert=True); return
     await query.answer()
     action = query.data
 
     if action == "admin_set_menu_photo":
         context.user_data['admin_step'] = 'wait_menu_photo'
-        await query.message.edit_text("🖼️ Отправьте новую картинку для главного меню:")
-        return
+        await query.message.edit_text("🖼️ Отправьте новую картинку для главного меню:"); return
 
     if action == "admin_start_bingo":
         context.user_data['setting_up_bingo'] = True
@@ -1452,164 +1277,125 @@ async def admin_callback_handler(update, context):
             [InlineKeyboardButton("✅ Без спонсоров", callback_data="setup_no_sponsor")],
             [InlineKeyboardButton("🔗 Добавить спонсора", callback_data="setup_add_sponsor")],
         ])
-        await query.message.edit_text("🎲 **Настройка игры**\n\nНужны спонсоры?", reply_markup=kb)
-        return
+        await query.message.edit_text("🎲 **Настройка игры**\n\nНужны спонсоры?", reply_markup=kb); return
 
     if action == "admin_list_triggers":
         kws = db.get_trigger_keywords()
         if not kws:
             await query.message.edit_text("📭 Триггеров нет.", reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("◀️ Назад", callback_data="admin_menu")]
-            ]))
+                [InlineKeyboardButton("◀️ Назад", callback_data="admin_menu")]]))
         else:
             await query.message.edit_text("📋 **Триггеры:**\n" + "\n".join(f"• {k}" for k in kws),
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="admin_menu")]]))
         return
 
     if "edit_rules_chat" in action:
-        context.user_data['admin_step'] = 'wait_info'
-        context.user_data['admin_info_key'] = 'rules_chat'
-        await query.message.edit_text("📝 Отправьте новый текст правил чата:")
-        return
+        context.user_data['admin_step'] = 'wait_info'; context.user_data['admin_info_key'] = 'rules_chat'
+        await query.message.edit_text("📝 Отправьте новый текст правил чата:"); return
     if "edit_rules_bingo" in action:
-        context.user_data['admin_step'] = 'wait_info'
-        context.user_data['admin_info_key'] = 'rules_bingo'
-        await query.message.edit_text("📝 Отправьте новый текст правил бинго:")
-        return
+        context.user_data['admin_step'] = 'wait_info'; context.user_data['admin_info_key'] = 'rules_bingo'
+        await query.message.edit_text("📝 Отправьте новый текст правил бинго:"); return
     if "edit_links" in action:
-        context.user_data['admin_step'] = 'wait_info'
-        context.user_data['admin_info_key'] = 'links'
-        await query.message.edit_text("📝 Отправьте новый текст ссылок:")
-        return
+        context.user_data['admin_step'] = 'wait_info'; context.user_data['admin_info_key'] = 'links'
+        await query.message.edit_text("📝 Отправьте новый текст ссылок:"); return
 
     if action.startswith("admin_add_") and action not in ("admin_add_choose", "admin_add_donation"):
         table = action.replace("admin_add_", "")
-        table = TABLE_MAP.get(table, table)  # Маппинг ex → exchangers
-        context.user_data['admin_step'] = 'wait_name'
-        context.user_data['admin_table'] = table
+        table = TABLE_MAP.get(table, table)
+        context.user_data['admin_step'] = 'wait_name'; context.user_data['admin_table'] = table
         names = {"shops": "магазина", "exchangers": "обменника", "vpn": "VPN", "jobs": "вакансии"}
-        await query.message.edit_text(f"🏪 **Добавление {names.get(table, '')}**\nШаг 1/4: Введите название:")
-        return
+        await query.message.edit_text(f"🏪 **Добавление {names.get(table, '')}**\nШаг 1/4: Введите название:"); return
 
     if action.startswith("admin_del_") and action not in ("admin_del_choose",):
         table = action.replace("admin_del_", "")
-        table = TABLE_MAP.get(table, table)  # Маппинг ex → exchangers
-        context.user_data['admin_step'] = 'wait_delete'
-        context.user_data['admin_table'] = table
-        await query.message.edit_text(f"🗑 Введите точное название для удаления:")
-        return
+        table = TABLE_MAP.get(table, table)
+        context.user_data['admin_step'] = 'wait_delete'; context.user_data['admin_table'] = table
+        await query.message.edit_text(f"🗑 Введите точное название для удаления:"); return
 
     if action == "admin_give_vip":
         context.user_data['admin_step'] = 'wait_vip_user'
-        await query.message.edit_text("👑 Введите username для выдачи VIP:")
-        return
+        await query.message.edit_text("👑 Введите username для выдачи VIP:"); return
     if action == "admin_set_rep":
         context.user_data['admin_step'] = 'wait_rep'
-        await query.message.edit_text("🔰 Введите: username уровень (0/1/2)\nПример: @user 1")
-        return
+        await query.message.edit_text("🔰 Введите: username уровень (0/1/2)\nПример: @user 1"); return
     if action == "admin_add_donation":
         context.user_data['admin_step'] = 'wait_donation'
-        await query.message.edit_text("💰 Введите username для засчитывания доната:")
-        return
+        await query.message.edit_text("💰 Введите username для засчитывания доната:"); return
     if action == "admin_ban_user":
         context.user_data['admin_step'] = 'wait_ban'
-        await query.message.edit_text("🚫 Введите ID пользователя для бана:")
-        return
+        await query.message.edit_text("🚫 Введите ID пользователя для бана:"); return
     if action == "admin_unban_user":
         context.user_data['admin_step'] = 'wait_unban'
-        await query.message.edit_text("🔓 Введите ID пользователя для разбана:")
-        return
+        await query.message.edit_text("🔓 Введите ID пользователя для разбана:"); return
     if action == "admin_reset_warn":
         context.user_data['admin_step'] = 'wait_reset_warn'
-        await query.message.edit_text("⚠️ Введите username для сброса предупреждений:")
-        return
+        await query.message.edit_text("⚠️ Введите username для сброса предупреждений:"); return
 
 async def admin_input_handler(update, context):
     global game_active, players, bingo_history, history_msg_id, progress_msg_id
-    global game_paused, players_table_msg_id, current_winner, sponcor_links
-    global registration_open
+    global game_paused, players_table_msg_id, current_winner, sponsor_links, registration_open
 
-    if not db.is_admin(update.effective_user.id):
-        return
-
-    if not update.message:
-        return
+    if not db.is_admin(update.effective_user.id): return
+    if not update.message: return
 
     text = update.message.text or update.message.caption or ""
     photo = update.message.photo[-1].file_id if update.message.photo else None
 
-    # Подтверждение приза для победителя бинго
+    # Подтверждение приза
     if update.effective_user.id in admin_form_data:
         data = admin_form_data[update.effective_user.id]
         if not data['prize']:
             data['prize'] = text if text else "Приз"
-            await safe_reply(update.message, "🎁 Приз сохранён. Теперь напишите поздравление (или '-' если без):")
-            return
+            await safe_reply(update.message, "🎁 Приз сохранён. Теперь напишите поздравление (или '-' если без):"); return
         else:
             data['congrats'] = text if text else ""
-            winner_uid = data['winner_id']
-            winner_uname = data['winner_username']
-            prize = data['prize']
-            congrats = data['congrats'] if data['congrats'] != '-' else ""
+            winner_uid = data['winner_id']; winner_uname = data['winner_username']
+            prize = data['prize']; congrats = data['congrats'] if data['congrats'] != '-' else ""
             chat_id = data['chat_id']
-
             publish_text = f"🏆 **ПОБЕДИТЕЛЬ ОПРЕДЕЛЁН!**\n\n👤 @{winner_uname}\n🎁 Приз: {prize}\n"
             if congrats: publish_text += f"💬 {congrats}\n"
-
             await safe_send(context.bot, chat_id, publish_text)
             db.add_win(winner_uid)
             for uid in players:
                 if uid != winner_uid: db.add_game(uid)
             del admin_form_data[update.effective_user.id]
-
             game_active = False; players.clear(); bingo_history.clear()
             history_msg_id = None; progress_msg_id = None; game_paused = False
-            players_table_msg_id = None; current_winner = None; sponcor_links = []
-            await safe_reply(update.message, "✅ Победитель опубликован, игра завершена!")
-            return
+            players_table_msg_id = None; current_winner = None; sponsor_links = []
+            await safe_reply(update.message, "✅ Победитель опубликован, игра завершена!"); return
 
     # Настройка бинго (спонсор)
     if context.user_data.get('setting_up_bingo'):
         step = context.user_data.get('admin_step', '')
         if step == 'wait_sponsor_name':
-            context.user_data['sponsor_name'] = text
-            context.user_data['admin_step'] = 'wait_sponsor_url'
-            await safe_reply(update.message, "🔗 Введите ссылку на спонсора (https://t.me/... или @username):")
-            return
+            context.user_data['sponsor_name'] = text; context.user_data['admin_step'] = 'wait_sponsor_url'
+            await safe_reply(update.message, "🔗 Введите ссылку на спонсора (https://t.me/... или @username):"); return
         elif step == 'wait_sponsor_url':
             name = context.user_data.get('sponsor_name', 'Спонсор')
-            url = text.strip()
-            chat_id = extract_chat_id(url)
-            sponcor_links.append({"text": name, "url": url, "chat_id": chat_id})
-            context.user_data.pop('admin_step', None)
-            context.user_data.pop('setting_up_bingo', None)
+            url = text.strip(); chat_id = extract_chat_id(url)
+            sponsor_links.append({"text": name, "url": url, "chat_id": chat_id})
+            context.user_data.pop('admin_step', None); context.user_data.pop('setting_up_bingo', None)
             registration_open = True
             await safe_reply(update.message, f"✅ Спонсор «{name}» добавлен! Регистрация открыта.")
-            await notify_group_registration(context)
-            return
+            await notify_group_registration(context); return
 
-    # Остальные шаги админ-панели
+    # Остальные шаги
     step = context.user_data.get('admin_step', '')
     if not step: return
 
     if step == 'wait_name':
-        context.user_data['temp_name'] = text
-        context.user_data['admin_step'] = 'wait_username'
+        context.user_data['temp_name'] = text; context.user_data['admin_step'] = 'wait_username'
         await safe_reply(update.message, "👤 Введите username (без @):")
     elif step == 'wait_username':
-        context.user_data['temp_username'] = text
-        context.user_data['admin_step'] = 'wait_desc'
+        context.user_data['temp_username'] = text; context.user_data['admin_step'] = 'wait_desc'
         await safe_reply(update.message, "📝 Введите описание:")
     elif step == 'wait_desc':
-        context.user_data['temp_desc'] = text
-        context.user_data['admin_step'] = 'wait_photo'
+        context.user_data['temp_desc'] = text; context.user_data['admin_step'] = 'wait_photo'
         await safe_reply(update.message, "🖼️ Отправьте фото или /skip:")
     elif step == 'wait_photo':
-        if text and text.lower() == "/skip":
-            photo = None
+        if text and text.lower() == "/skip": photo = None
         elif not photo:
-            await safe_reply(update.message, "❌ Отправьте фото или напишите /skip чтобы пропустить.")
-            return
+            await safe_reply(update.message, "❌ Отправьте фото или напишите /skip чтобы пропустить."); return
         table = context.user_data.get('admin_table', '')
         ok = db.add_item(table, context.user_data['temp_name'], context.user_data['temp_username'], context.user_data['temp_desc'], photo)
         await safe_reply(update.message, "✅ Добавлено!" if ok else "❌ Ошибка (возможно, дубль).")
@@ -1620,26 +1406,18 @@ async def admin_input_handler(update, context):
         await safe_reply(update.message, "✅ Обновлено!")
         context.user_data['admin_step'] = None
     elif step == 'wait_menu_photo':
-        if update.message.photo:
-            db.set_menu_photo(photo)
-            await safe_reply(update.message, "✅ Картинка меню обновлена!")
-        else:
-            await safe_reply(update.message, "❌ Отправьте фото.")
+        if update.message.photo: db.set_menu_photo(photo); await safe_reply(update.message, "✅ Картинка меню обновлена!")
+        else: await safe_reply(update.message, "❌ Отправьте фото.")
         context.user_data['admin_step'] = None
     elif step == 'wait_delete':
         table = context.user_data.get('admin_table', '')
-        if db.delete_item(table, text):
-            await safe_reply(update.message, "✅ Удалено!")
-        else:
-            await safe_reply(update.message, "❌ Не найдено.")
+        if db.delete_item(table, text): await safe_reply(update.message, "✅ Удалено!")
+        else: await safe_reply(update.message, "❌ Не найдено.")
         context.user_data['admin_step'] = None
     elif step == 'wait_vip_user':
         uid = db.get_user_id_by_username(text.lstrip('@'))
-        if uid:
-            db.set_vip(uid, True)
-            await safe_reply(update.message, f"✅ @{text.lstrip('@')} получил VIP!")
-        else:
-            await safe_reply(update.message, "❌ Пользователь не найден.")
+        if uid: db.set_vip(uid, True); await safe_reply(update.message, f"✅ @{text.lstrip('@')} получил VIP!")
+        else: await safe_reply(update.message, "❌ Пользователь не найден.")
         context.user_data['admin_step'] = None
     elif step == 'wait_rep':
         parts = text.split()
@@ -1648,46 +1426,28 @@ async def admin_input_handler(update, context):
             if uid:
                 try:
                     lvl = int(parts[1])
-                    if db.set_reputation(uid, lvl):
-                        await safe_reply(update.message, f"✅ Репутация обновлена! ({rep_text(lvl)})")
-                    else:
-                        await safe_reply(update.message, "❌ Уровень 0, 1 или 2.")
-                except:
-                    await safe_reply(update.message, "❌ Уровень — число.")
-            else:
-                await safe_reply(update.message, "❌ Пользователь не найден.")
+                    if db.set_reputation(uid, lvl): await safe_reply(update.message, f"✅ Репутация обновлена! ({rep_text(lvl)})")
+                    else: await safe_reply(update.message, "❌ Уровень 0, 1 или 2.")
+                except: await safe_reply(update.message, "❌ Уровень — число.")
+            else: await safe_reply(update.message, "❌ Пользователь не найден.")
         context.user_data['admin_step'] = None
     elif step == 'wait_donation':
         uid = db.get_user_id_by_username(text.lstrip('@'))
-        if uid:
-            db.add_donation(uid)
-            await safe_reply(update.message, "✅ Донат засчитан!")
-        else:
-            await safe_reply(update.message, "❌ Пользователь не найден.")
+        if uid: db.add_donation(uid); await safe_reply(update.message, "✅ Донат засчитан!")
+        else: await safe_reply(update.message, "❌ Пользователь не найден.")
         context.user_data['admin_step'] = None
     elif step == 'wait_ban':
-        try:
-            uid = int(text)
-            db.ban_user(uid)
-            await safe_reply(update.message, f"✅ {uid} забанен.")
-        except:
-            await safe_reply(update.message, "❌ ID — число.")
+        try: uid = int(text); db.ban_user(uid); await safe_reply(update.message, f"✅ {uid} забанен.")
+        except: await safe_reply(update.message, "❌ ID — число.")
         context.user_data['admin_step'] = None
     elif step == 'wait_unban':
-        try:
-            uid = int(text)
-            db.unban_user(uid)
-            await safe_reply(update.message, f"✅ {uid} разбанен.")
-        except:
-            await safe_reply(update.message, "❌ ID — число.")
+        try: uid = int(text); db.unban_user(uid); await safe_reply(update.message, f"✅ {uid} разбанен.")
+        except: await safe_reply(update.message, "❌ ID — число.")
         context.user_data['admin_step'] = None
     elif step == 'wait_reset_warn':
         uid = db.get_user_id_by_username(text.lstrip('@'))
-        if uid:
-            antiflood.reset_warnings(uid)
-            await safe_reply(update.message, f"✅ Предупреждения @{text.lstrip('@')} сброшены.")
-        else:
-            await safe_reply(update.message, "❌ Пользователь не найден.")
+        if uid: antiflood.reset_warnings(uid); await safe_reply(update.message, f"✅ Предупреждения @{text.lstrip('@')} сброшены.")
+        else: await safe_reply(update.message, "❌ Пользователь не найден.")
         context.user_data['admin_step'] = None
 
 async def confirm_delete_handler(update, context):
@@ -1698,12 +1458,10 @@ async def confirm_delete_handler(update, context):
     parts = data.split("_", 2)
     if len(parts) >= 3:
         table = parts[2]
-        table = TABLE_MAP.get(table, table)  # Маппинг
+        table = TABLE_MAP.get(table, table)
         name = parts[3] if len(parts) > 3 else ""
-        if db.delete_item(table, name):
-            await query.message.edit_text("✅ Удалено!")
-        else:
-            await query.message.edit_text("❌ Не найдено.")
+        if db.delete_item(table, name): await query.message.edit_text("✅ Удалено!")
+        else: await query.message.edit_text("❌ Не найдено.")
 
 # =====================================================================
 # ТРИГГЕРЫ
@@ -1728,12 +1486,9 @@ async def check_triggers(update, context):
 async def newt_command(update, context):
     if not db.is_admin(update.effective_user.id): return
     if not update.message.reply_to_message:
-        await safe_reply(update.message, "❌ Ответьте на сообщение.")
-        return
+        await safe_reply(update.message, "❌ Ответьте на сообщение."); return
     args = context.args
-    if not args:
-        await safe_reply(update.message, "❌ Укажите ключ: /newt прайс")
-        return
+    if not args: await safe_reply(update.message, "❌ Укажите ключ: /newt прайс"); return
     kw = args[0].lower()
     rmsg = update.message.reply_to_message
     rt = rmsg.text or rmsg.caption or ""
@@ -1748,21 +1503,15 @@ async def newt_command(update, context):
 
 async def delt_command(update, context):
     if not db.is_admin(update.effective_user.id): return
-    if not context.args:
-        await safe_reply(update.message, "❌ /delt ключ")
-        return
+    if not context.args: await safe_reply(update.message, "❌ /delt ключ"); return
     kw = context.args[0].lower()
-    if db.delete_trigger(kw):
-        await safe_reply(update.message, f"✅ «{kw}» удалён.")
-    else:
-        await safe_reply(update.message, f"❌ Не найден.")
+    if db.delete_trigger(kw): await safe_reply(update.message, f"✅ «{kw}» удалён.")
+    else: await safe_reply(update.message, f"❌ Не найден.")
 
 async def listtr_command(update, context):
     if not db.is_admin(update.effective_user.id): return
     kws = db.get_trigger_keywords()
-    if not kws:
-        await safe_reply(update.message, "📭 Пусто.")
-        return
+    if not kws: await safe_reply(update.message, "📭 Пусто."); return
     await safe_reply(update.message, "📋 Триггеры:\n" + "\n".join(f"• {k}" for k in kws))
 
 # =====================================================================
@@ -1793,8 +1542,7 @@ async def handle_group_text(update, context):
         old_r, _ = get_rank(old_cnt)
         new_r, new_i = get_rank(old_cnt + 1)
         if old_r != new_r:
-            await context.bot.send_message(update.effective_chat.id,
-                f"🎉 @{uname} достиг ранга **{new_r}** {new_i}!")
+            await context.bot.send_message(update.effective_chat.id, f"🎉 @{uname} достиг ранга **{new_r}** {new_i}!")
     if "group_chats" not in context.bot_data: context.bot_data["group_chats"] = set()
     context.bot_data["group_chats"].add(update.effective_chat.id)
 
@@ -1827,6 +1575,7 @@ if __name__ == "__main__":
     app.post_init = lambda app: set_commands(app)
     app.add_error_handler(error_handler)
 
+    # Команды
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("brand", brand_command))
     app.add_handler(CommandHandler("statb", stat_command))
@@ -1842,20 +1591,23 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("listtr", listtr_command))
     app.add_handler(CommandHandler("skip", lambda u, c: safe_reply(u.message, "Нечего пропускать.")))
 
+    # Колбэки — один обработчик для setup, один для всего остального
     app.add_handler(CallbackQueryHandler(setup_callback, pattern="^setup_"))
     app.add_handler(CallbackQueryHandler(main_callback, pattern="^(main_menu|mode_|show_|info_|stat_|shop_|exch_|vpn_|job_|bingo_|admin_|confirm_del_|check_sponsor_|stat_page_|open_menu)"))
 
+    # Текстовые сообщения — правильный порядок
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS, check_triggers), group=0)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_text), group=0)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_bingo_numbers), group=1)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, greeting), group=2)
     app.add_handler(MessageHandler(~filters.COMMAND & filters.ChatType.PRIVATE, admin_input_handler), group=3)
 
+    # Добавление в группу
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot_added_to_group))
 
+    # Ежедневный сброс
     app.job_queue.run_daily(reset_daily_stats, time(0, 5, 0))
 
     logger.info("🚀 Brandoвичок запущен!")
     print("🚀 Brandoвичок запущен!")
-    print("✅ Все 12 таблиц созданы и проверены")
     app.run_polling()
