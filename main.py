@@ -14,13 +14,10 @@ from telegram.constants import ChatType
 # КОНФИГУРАЦИЯ
 # =====================================================================
 BOT_TOKEN = "8643635341:AAHLcxbOjtwgQgHS0KvrvMit5cuyu43ra4w"
-ADMIN_IDS = [7956317602, 5243173039]
+ADMIN_IDS = [7956317602, 524317303]
 
 TRIGGER_WORDS = ["привет", "как ты", "салам"]
 REPLY_WORDS = ["Привет 👋", "Салам 🤝", "Здорова 😎"]
-
-ACTIVITY_TIMEOUT = 300
-CACHE_TTL = 300
 
 RANKS = [
     (0, "🌊 Залётный", "🌊"),
@@ -29,6 +26,14 @@ RANKS = [
     (1001, "👑 Легенда", "👑"),
     (1501, "⭐ Свой", "⭐")
 ]
+
+# Маппинг коротких имён на полные названия таблиц
+TABLE_MAP = {
+    "shop": "shops",
+    "exch": "exchangers",
+    "vpn": "vpn",
+    "job": "jobs"
+}
 
 # =====================================================================
 # ЛОГИРОВАНИЕ
@@ -533,11 +538,11 @@ def profile_text(uid):
 # КЛАВИАТУРЫ
 # =====================================================================
 PINNED_MENU_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🛍️ Открыть меню ", callback_data="open_menu")]
+    [InlineKeyboardButton("🛍️ Открыть меню Brandoвичок", callback_data="open_menu")]
 ])
 
 MAIN_MENU = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🎰 Бинго ", callback_data="mode_bingo")],
+    [InlineKeyboardButton("🎰 Бинго — игра на удачу", callback_data="mode_bingo")],
     [InlineKeyboardButton("🛍️ Магазины и обменники", callback_data="mode_shops")],
     [InlineKeyboardButton("📊 Статистика чата", callback_data="mode_stats")],
     [InlineKeyboardButton("ℹ️ Информация и правила", callback_data="mode_info")],
@@ -629,12 +634,12 @@ ADMIN_USERS_MENU = InlineKeyboardMarkup([
 ])
 
 WELCOME_TEXT = (
-    "🤖 Brand чат приветствует тебя!\n\n"
-    "🎰 Бинго — играй и выигрывай призы\n"
-    "🛍️ Магазины — проверенные продавцы\n"
-    "💱 Обменники — лучшие курсы\n"
-    "💼 Вакансии — работа в твоём городе\n"
-    "📊 Статистика — топ активных участников\n\n"
+    "🤖 **Brandoвичок** приветствует тебя!\n\n"
+    "🎰 **Бинго** — играй и выигрывай призы\n"
+    "🛍️ **Магазины** — проверенные продавцы\n"
+    "💱 **Обменники** — лучшие курсы\n"
+    "💼 **Вакансии** — работа в твоём городе\n"
+    "📊 **Статистика** — топ активных участников\n\n"
     "Выбери раздел:"
 )
 
@@ -812,7 +817,7 @@ async def main_callback(update, context):
     mid = query.message.message_id
     data = query.data
 
-    # Открытие меню из закреплённого сообщения — всегда создаём новое меню для пользователя
+    # Открытие меню из закреплённого сообщения
     if data == "open_menu":
         await query.answer()
         photo_id = db.get_menu_photo()
@@ -822,7 +827,7 @@ async def main_callback(update, context):
             msg = await query.message.reply_text(WELCOME_TEXT, reply_markup=MAIN_MENU)
         return
 
-    # Для остальных колбэков — проверка владельца меню
+    # Проверка владельца меню
     owner = get_menu_owner_cb(context, mid)
     if owner and uid != owner:
         await query.answer("⚠️ Это меню другого пользователя. Нажмите «🛍️ Открыть меню» в закреплённом сообщении.", show_alert=True)
@@ -1142,7 +1147,7 @@ async def bingo_progress_handler(update, context):
     await query.message.edit_text("📊 **Прогресс игры:**\n" + "\n".join(lines))
 
 # =====================================================================
-# ОБРАБОТКА ЧИСЕЛ ДЛЯ БИНГО (ТОЛЬКО В ГРУППЕ)
+# ОБРАБОТКА ЧИСЕЛ ДЛЯ БИНГО
 # =====================================================================
 async def handle_bingo_numbers(update, context):
     if 'awaiting_numbers' not in context.user_data:
@@ -1479,14 +1484,16 @@ async def admin_callback_handler(update, context):
 
     if action.startswith("admin_add_") and action not in ("admin_add_choose", "admin_add_donation"):
         table = action.replace("admin_add_", "")
+        table = TABLE_MAP.get(table, table)  # Маппинг ex → exchangers
         context.user_data['admin_step'] = 'wait_name'
         context.user_data['admin_table'] = table
-        names = {"shop": "магазина", "exch": "обменника", "vpn": "VPN", "job": "вакансии"}
+        names = {"shops": "магазина", "exchangers": "обменника", "vpn": "VPN", "jobs": "вакансии"}
         await query.message.edit_text(f"🏪 **Добавление {names.get(table, '')}**\nШаг 1/4: Введите название:")
         return
 
     if action.startswith("admin_del_") and action not in ("admin_del_choose",):
         table = action.replace("admin_del_", "")
+        table = TABLE_MAP.get(table, table)  # Маппинг ex → exchangers
         context.user_data['admin_step'] = 'wait_delete'
         context.user_data['admin_table'] = table
         await query.message.edit_text(f"🗑 Введите точное название для удаления:")
@@ -1691,6 +1698,7 @@ async def confirm_delete_handler(update, context):
     parts = data.split("_", 2)
     if len(parts) >= 3:
         table = parts[2]
+        table = TABLE_MAP.get(table, table)  # Маппинг
         name = parts[3] if len(parts) > 3 else ""
         if db.delete_item(table, name):
             await query.message.edit_text("✅ Удалено!")
