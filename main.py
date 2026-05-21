@@ -4,6 +4,7 @@ import asyncio
 import traceback
 import logging
 import atexit
+import os
 from datetime import datetime, time, timedelta
 from collections import defaultdict
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand
@@ -1225,6 +1226,8 @@ async def admin_callback_handler(update, context):
 async def admin_input_handler(update, context):
     global game_active, players, bingo_history, history_msg_id, progress_msg_id
     global game_paused, players_table_msg_id, current_winner, sponcor_links, registration_open
+    global registration_ever_opened
+
     if not db.is_admin(update.effective_user.id): return
     if not update.message: return
     text = update.message.text or update.message.caption or ""
@@ -1249,7 +1252,7 @@ async def admin_input_handler(update, context):
             game_active = False; players.clear(); bingo_history.clear()
             history_msg_id = None; progress_msg_id = None; game_paused = False
             players_table_msg_id = None; current_winner = None; sponcor_links = []
-            global registration_ever_opened; registration_ever_opened = False
+            registration_ever_opened = False
             await safe_reply(update.message, "✅ Победитель опубликован, игра завершена!"); return
 
     if context.user_data.get('setting_up_bingo'):
@@ -1261,8 +1264,7 @@ async def admin_input_handler(update, context):
             name = context.user_data.get('sponsor_name', 'Спонсор'); url = text.strip(); chat_id = extract_chat_id(url)
             sponcor_links.append({"text": name, "url": url, "chat_id": chat_id})
             context.user_data.pop('admin_step', None); context.user_data.pop('setting_up_bingo', None)
-            registration_open = True
-            global registration_ever_opened; registration_ever_opened = True
+            registration_open = True; registration_ever_opened = True
             await safe_reply(update.message, f"✅ Спонсор «{name}» добавлен! Регистрация открыта.")
             await notify_group_registration(context); return
 
@@ -1394,7 +1396,7 @@ async def listtr_command(update, context):
     await safe_reply(update.message, "📋 Триггеры:\n" + "\n".join(f"• {k}" for k in kws))
 
 # =====================================================================
-# ГРУППОВЫЕ ОБРАБОТЧИКИ (СТАТИСТИКА + ТРИГГЕРЫ + ПРИВЕТСТВИЯ)
+# ГРУППОВЫЕ ОБРАБОТЧИКИ
 # =====================================================================
 async def handle_group_text(update, context):
     if update.effective_chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]: return
