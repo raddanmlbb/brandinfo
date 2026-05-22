@@ -4,7 +4,6 @@ import asyncio
 import traceback
 import logging
 import atexit
-import os
 from datetime import datetime, time, timedelta
 from collections import defaultdict
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand
@@ -429,12 +428,23 @@ async def delete_message_after(msg, delay=7):
     try: await msg.delete()
     except: pass
 
-def format_quote_card(title, description, username, views, item_type="shop"):
+def format_card(title, description, username, views, item_type="shop"):
     icons = {"shop": "🏪", "exch": "💱", "vpn": "🛡️", "job": "💼"}
     icon = icons.get(item_type, "📌")
-    text = f"{icon} <b>{title}</b>\n\n📝 {description}\n"
-    if username: text += f"\n👤 @{username}\n"
-    text += f"\n👁️ {views} просмотров"
+    text = (
+        f"╔══════════════════════════╗\n"
+        f"║  {icon} Магазин              ║\n"
+        f"╠══════════════════════════╣\n"
+        f"║  <b>{title}</b>\n"
+        f"║\n"
+        f"║  📝 {description}\n"
+        f"║\n"
+    )
+    if username: text += f"║  👤 @{username}\n"
+    text += (
+        f"║  👁️ {views} просмотров\n"
+        f"╚══════════════════════════╝"
+    )
     return text
 
 def profile_text(uid):
@@ -520,7 +530,7 @@ ADMIN_MENU = InlineKeyboardMarkup([
     [InlineKeyboardButton("🛍️ Управление карточками", callback_data="admin_cards")],
     [InlineKeyboardButton("📝 Правила и ссылки", callback_data="admin_info")],
     [InlineKeyboardButton("👑 Пользователи", callback_data="admin_users")],
-    [InlineKeyboardButton("🎲 Запустить бинго", callback_data="admin_start_bingo")],
+    [InlineKeyboardButton("📝 Открыть регистрацию", callback_data="admin_start_bingo")],
     [InlineKeyboardButton("🖼️ Картинка меню", callback_data="admin_set_menu_photo")],
     [InlineKeyboardButton("📋 Список триггеров", callback_data="admin_list_triggers")],
 ])
@@ -732,6 +742,7 @@ async def main_callback(update, context):
     if data == "invite_friend":
         await invite_friend_handler(update, context); return
 
+    # Проверка владельца меню (кроме open_menu и invite_friend)
     owner = get_menu_owner_cb(context, mid)
     if owner and uid != owner:
         await query.answer("⚠️ Это меню другого пользователя. Нажмите «🛍️ Открыть меню» в закреплённом сообщении.", show_alert=True); return
@@ -758,11 +769,13 @@ async def main_callback(update, context):
         await query.message.edit_text("ℹ️ <b>Информация</b>\nВыберите:", reply_markup=INFO_MENU, parse_mode="HTML")
         set_menu_owner_cb(context, mid, uid); return
 
+    # --- Бинго ---
     if data == "bingo_register": await bingo_register_handler(update, context); return
     if data == "bingo_my_combo": await bingo_my_combo_handler(update, context); return
     if data == "bingo_players": await bingo_players_handler(update, context); return
     if data == "bingo_progress": await bingo_progress_handler(update, context); return
 
+    # --- Статистика ---
     if data == "stat_global": await stat_global_callback(update, context); return
     if data == "stat_today": await stat_today_callback(update, context); return
     if data == "stat_profile":
@@ -773,6 +786,7 @@ async def main_callback(update, context):
         page = int(data.split("_")[-1]); context.user_data['stat_page'] = page
         await stat_global_callback(update, context); return
 
+    # --- Инфо ---
     if data == "info_rules_chat":
         text, _ = db.get_info('rules_chat')
         await query.message.edit_text(f"📜 <b>ПРАВИЛА ЧАТА</b>\n\n{text}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="mode_info")]]), parse_mode="HTML"); return
@@ -784,18 +798,22 @@ async def main_callback(update, context):
         await query.message.edit_text(f"🔗 <b>ПОЛЕЗНЫЕ ССЫЛКИ</b>\n\n{text}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="mode_info")]]), parse_mode="HTML"); return
     if data == "show_vpn": await show_items_list(update, context, "vpn", "VPN", "mode_info", "vpn"); return
 
+    # --- Магазины ---
     if data == "show_shops": await show_items_list(update, context, "shops", "магазинов", "mode_shops", "shop"); return
     if data == "show_exch": await show_items_list(update, context, "exchangers", "обменников", "mode_shops", "exch"); return
     if data == "show_jobs": await show_items_list(update, context, "jobs", "вакансий", "mode_shops", "job"); return
     if data == "show_popular": await show_popular_handler(update, context); return
 
+    # --- Карточки ---
     if data.startswith("shop_"): await show_item_card(update, context, "shops", "Магазин", "show_shops", data[5:], "shop"); return
     if data.startswith("exch_"): await show_item_card(update, context, "exchangers", "Обменник", "show_exch", data[5:], "exch"); return
     if data.startswith("vpn_"): await show_item_card(update, context, "vpn", "VPN", "show_vpn", data[4:], "vpn"); return
     if data.startswith("job_"): await show_item_card(update, context, "jobs", "Вакансия", "show_jobs", data[4:], "job"); return
 
+    # --- Спонсоры ---
     if data.startswith("check_sponsor_"): await check_sponsor_subscription(update, context); return
 
+    # --- Админка ---
     if data == "admin_menu": await query.message.edit_text("🔧 <b>АДМИН-ПАНЕЛЬ BRANDOВИЧКА</b>\nВыберите раздел:", reply_markup=ADMIN_MENU, parse_mode="HTML"); return
     if data == "admin_cards": await query.message.edit_text("🛍️ <b>Управление карточками</b>\nВыберите действие:", reply_markup=ADMIN_CARDS_MENU, parse_mode="HTML"); return
     if data == "admin_add_choose": await query.message.edit_text("➕ <b>Добавление</b>\nВыберите тип:", reply_markup=card_type_keyboard("add"), parse_mode="HTML"); return
@@ -803,11 +821,16 @@ async def main_callback(update, context):
     if data == "admin_info": await query.message.edit_text("📝 <b>Редактирование информации</b>\nВыберите:", reply_markup=ADMIN_INFO_MENU, parse_mode="HTML"); return
     if data == "admin_users": await query.message.edit_text("👑 <b>Управление пользователями</b>\nВыберите действие:", reply_markup=ADMIN_USERS_MENU, parse_mode="HTML"); return
 
+    # Админские колбэки (включая admin_del_)
     if (data.startswith("admin_add_") or data.startswith("admin_del_") or data.startswith("admin_edit_") or
         data.startswith("admin_give_") or data.startswith("admin_set_") or data.startswith("admin_ban_") or
         data.startswith("admin_unban_") or data.startswith("admin_reset_") or data == "admin_set_menu_photo" or
         data == "admin_start_bingo" or data == "admin_list_triggers"):
         await admin_callback_handler(update, context); return
+
+    # Колбэки удаления из списка (del_item_shop_Название)
+    if data.startswith("del_item_"):
+        await delete_item_from_list(update, context); return
 
     if data.startswith("confirm_del_"): await confirm_delete_handler(update, context); return
 
@@ -857,10 +880,12 @@ async def show_item_card(update, context, table, title, back_cb, identifier, ite
     item = db.get_item_by_name(table, identifier) if table == "jobs" else db.get_item_by_username(table, identifier)
     if not item: await query.answer("❌ Не найден.", show_alert=True); return
     name, username, description, photo_id, views = item
-    caption = format_quote_card(name, description, username, views, item_type)
+    caption = format_card(name, description, username, views, item_type)
     kb = []
     if username: kb.append([InlineKeyboardButton("📩 Написать", url=f"https://t.me/{username}")])
     kb.append([InlineKeyboardButton("◀️ Назад", callback_data=back_cb)])
+    # Очищаем владельца старого сообщения
+    clear_menu_owner_cb(context, query.message.message_id)
     if photo_id:
         await query.message.delete()
         msg = await context.bot.send_photo(query.message.chat_id, photo_id, caption=caption, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML")
@@ -880,6 +905,41 @@ async def show_popular_handler(update, context):
         for n, u, v in pop_exch: text += f"• {n} (@{u}) — {v}👁️\n"
     if not pop_shops and not pop_exch: text += "Пока ничего нет."
     await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="mode_shops")]]), parse_mode="HTML")
+
+# =====================================================================
+# УДАЛЕНИЕ КАРТОЧЕК ЧЕРЕЗ СПИСОК
+# =====================================================================
+async def delete_item_from_list(update, context):
+    """Удаление карточки по нажатию кнопки в списке удаления"""
+    query = update.callback_query
+    if not db.is_admin(query.from_user.id): await query.answer("❌ Только админ.", show_alert=True); return
+    # Формат: del_item_shop_Название
+    parts = query.data.split("_", 2)
+    if len(parts) < 3: return
+    short_table = parts[2]
+    table = TABLE_MAP.get(short_table, short_table)
+    name = parts[3] if len(parts) > 3 else ""
+    if db.delete_item(table, name):
+        await query.answer("✅ Удалено!", show_alert=True)
+    else:
+        await query.answer("❌ Не найдено.", show_alert=True)
+    # Обновляем список после удаления
+    await show_delete_list(update, context, table, short_table)
+
+async def show_delete_list(update, context, table, short_table):
+    """Показывает список карточек для удаления"""
+    query = update.callback_query
+    items = db.get_items(table)
+    if not items:
+        await query.message.edit_text(f"📭 Список пуст.", reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Назад", callback_data="admin_cards")]
+        ]))
+        return
+    kb = []
+    for name, username, desc, photo, views in items:
+        kb.append([InlineKeyboardButton(f"🗑 {name}", callback_data=f"del_item_{short_table}_{name}")])
+    kb.append([InlineKeyboardButton("◀️ Назад", callback_data="admin_del_choose")])
+    await query.message.edit_text(f"🗑 <b>Выберите для удаления:</b>", reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML")
 
 # =====================================================================
 # БИНГО КОЛБЭКИ
@@ -1189,15 +1249,30 @@ async def admin_callback_handler(update, context):
     query = update.callback_query
     if not db.is_admin(query.from_user.id): await query.answer("❌ Только админ.", show_alert=True); return
     await query.answer(); action = query.data
+
     if action == "admin_set_menu_photo":
         context.user_data['admin_step'] = 'wait_menu_photo'; await query.message.edit_text("🖼️ Отправьте новую картинку для главного меню:"); return
+
     if action == "admin_start_bingo":
-        await startreg_command(query, context); return
+        chat_id = context.bot_data.get('game_chat_id')
+        chat_info = ""
+        if chat_id:
+            try: chat = await context.bot.get_chat(chat_id); chat_info = f"\n📢 Группа: <b>{chat.title}</b>"
+            except: chat_info = f"\n📢 ID чата: {chat_id}"
+        else: chat_info = "\n⚠️ Группа не выбрана! Отправьте /start в группе."
+        context.user_data['setting_up_bingo'] = True
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Без спонсоров", callback_data="setup_no_sponsor")],
+            [InlineKeyboardButton("🔗 Добавить спонсора", callback_data="setup_add_sponsor")],
+        ])
+        await query.message.edit_text(f"🎲 <b>Настройка регистрации</b>{chat_info}\n\nНужны спонсоры для участия?", reply_markup=kb, parse_mode="HTML"); return
+
     if action == "admin_list_triggers":
         kws = db.get_trigger_keywords()
         if not kws: await query.message.edit_text("📭 Триггеров нет.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="admin_menu")]]))
         else: await query.message.edit_text("📋 <b>Триггеры:</b>\n" + "\n".join(f"• {k}" for k in kws), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="admin_menu")]]), parse_mode="HTML")
         return
+
     if "edit_rules_chat" in action:
         context.user_data['admin_step'] = 'wait_info'; context.user_data['admin_info_key'] = 'rules_chat'
         await query.message.edit_text("📝 Отправьте новый текст правил чата:"); return
@@ -1207,15 +1282,18 @@ async def admin_callback_handler(update, context):
     if "edit_links" in action:
         context.user_data['admin_step'] = 'wait_info'; context.user_data['admin_info_key'] = 'links'
         await query.message.edit_text("📝 Отправьте новый текст ссылок:"); return
+
     if action.startswith("admin_add_") and action not in ("admin_add_choose", "admin_add_donation"):
         table = action.replace("admin_add_", ""); table = TABLE_MAP.get(table, table)
         context.user_data['admin_step'] = 'wait_name'; context.user_data['admin_table'] = table
         names = {"shops": "магазина", "exchangers": "обменника", "vpn": "VPN", "jobs": "вакансии"}
         await query.message.edit_text(f"🏪 <b>Добавление {names.get(table, '')}</b>\nШаг 1/4: Введите название:", parse_mode="HTML"); return
+
     if action.startswith("admin_del_") and action not in ("admin_del_choose",):
         table = action.replace("admin_del_", ""); table = TABLE_MAP.get(table, table)
-        context.user_data['admin_step'] = 'wait_delete'; context.user_data['admin_table'] = table
-        await query.message.edit_text(f"🗑 Введите точное название для удаления:"); return
+        # Показываем список для удаления вместо ввода названия
+        await show_delete_list(update, context, table, action.replace("admin_del_", "")); return
+
     if action == "admin_give_vip": context.user_data['admin_step'] = 'wait_vip_user'; await query.message.edit_text("👑 Введите username для выдачи VIP:"); return
     if action == "admin_set_rep": context.user_data['admin_step'] = 'wait_rep'; await query.message.edit_text("🔰 Введите: username уровень (0/1/2)\nПример: @user 1"); return
     if action == "admin_add_donation": context.user_data['admin_step'] = 'wait_donation'; await query.message.edit_text("💰 Введите username для засчитывания доната:"); return
@@ -1233,6 +1311,7 @@ async def admin_input_handler(update, context):
     text = update.message.text or update.message.caption or ""
     photo = update.message.photo[-1].file_id if update.message.photo else None
 
+    # Подтверждение приза
     if update.effective_user.id in admin_form_data:
         data = admin_form_data[update.effective_user.id]
         if not data['prize']:
@@ -1255,6 +1334,7 @@ async def admin_input_handler(update, context):
             registration_ever_opened = False
             await safe_reply(update.message, "✅ Победитель опубликован, игра завершена!"); return
 
+    # Настройка бинго (спонсор)
     if context.user_data.get('setting_up_bingo'):
         step = context.user_data.get('admin_step', '')
         if step == 'wait_sponsor_name':
@@ -1268,6 +1348,7 @@ async def admin_input_handler(update, context):
             await safe_reply(update.message, f"✅ Спонсор «{name}» добавлен! Регистрация открыта.")
             await notify_group_registration(context); return
 
+    # Кнопки в ЛС
     if text == "👤 Мой профиль":
         db.ensure_user(update.effective_user.id, update.effective_user.username or str(update.effective_user.id))
         await safe_reply(update.message, profile_text(update.effective_user.id), parse_mode="HTML"); return
@@ -1304,11 +1385,6 @@ async def admin_input_handler(update, context):
     elif step == 'wait_menu_photo':
         if update.message.photo: db.set_menu_photo(photo); await safe_reply(update.message, "✅ Картинка меню обновлена!")
         else: await safe_reply(update.message, "❌ Отправьте фото.")
-        context.user_data['admin_step'] = None
-    elif step == 'wait_delete':
-        table = context.user_data.get('admin_table', '')
-        if db.delete_item(table, text): await safe_reply(update.message, "✅ Удалено!")
-        else: await safe_reply(update.message, "❌ Не найдено.")
         context.user_data['admin_step'] = None
     elif step == 'wait_vip_user':
         uid = db.get_user_id_by_username(text.lstrip('@'))
@@ -1444,7 +1520,7 @@ async def set_commands(app):
         BotCommand("rank", "⭐ Мой ранг"),
         BotCommand("ktoeto", "🆔 Инфо о пользователе"),
         BotCommand("admin", "🔧 Админ-панель (ЛС)"),
-        BotCommand("startreg", "🎲 Открыть регистрацию (ЛС)"),
+        BotCommand("startreg", "📝 Открыть регистрацию (ЛС)"),
         BotCommand("stopreg", "🚫 Закрыть регистрацию (группа)"),
         BotCommand("openreg", "🔓 Переоткрыть регистрацию (группа)"),
         BotCommand("bingo", "🎰 Крутить бинго (админ)"),
@@ -1481,7 +1557,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("skip", lambda u, c: safe_reply(u.message, "Нечего пропускать.")))
 
     app.add_handler(CallbackQueryHandler(setup_callback, pattern="^setup_"))
-    app.add_handler(CallbackQueryHandler(main_callback, pattern="^(main_menu|mode_|show_|info_|stat_|shop_|exch_|vpn_|job_|bingo_|admin_|confirm_del_|check_sponsor_|stat_page_|open_menu|invite_friend)"))
+    app.add_handler(CallbackQueryHandler(main_callback, pattern="^(main_menu|mode_|show_|info_|stat_|shop_|exch_|vpn_|job_|bingo_|admin_|confirm_del_|del_item_|check_sponsor_|stat_page_|open_menu|invite_friend)"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS, handle_group_text), group=0)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_bingo_numbers), group=1)
